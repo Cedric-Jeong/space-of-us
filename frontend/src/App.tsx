@@ -235,6 +235,18 @@ const App: React.FC = () => {
     }
   };
 
+  const deleteData = async (path: string) => {
+    if (!window.confirm('정말 삭제할까요?')) return;
+    try {
+      await remove(ref(rdb, path));
+      showToast('삭제되었습니다.');
+      loadAll();
+    } catch (e) {
+      console.error("삭제 에러:", e);
+      showToast('삭제 권한이 없습니다.');
+    }
+  };
+
   const fetchAllUsers = async () => {
     try {
       const snap = await get(ref(rdb, 'users'));
@@ -334,7 +346,7 @@ const App: React.FC = () => {
         </div>
         <div className="section-label">최근 기록</div>
         <div id="feed-list">
-          {feeds.length === 0 ? <div className="empty">기록이 없어요.</div> : feeds.map(f => <FeedCard key={f.id} feed={f} currentUser={user} refresh={fetchFeeds} />)}
+          {feeds.length === 0 ? <div className="empty">기록이 없어요.</div> : feeds.map(f => <FeedCard key={f.id} feed={f} currentUser={user} refresh={fetchFeeds} onDelete={deleteData} />)}
         </div>
       </div>
     );
@@ -390,7 +402,7 @@ const App: React.FC = () => {
             <button className="post-btn" onClick={postMemory} disabled={isPosting}>남기기</button>
           </div>
         </div>
-        <div id="memory-list">{memories.map(m => <MemoryCard key={m.id} memory={m} currentUser={user} />)}</div>
+        <div id="memory-list">{memories.map(m => <MemoryCard key={m.id} memory={m} currentUser={user} onDelete={deleteData} />)}</div>
       </div>
     );
   };
@@ -427,7 +439,7 @@ const App: React.FC = () => {
             <button className="btn-save" onClick={addGoal}>저장</button>
           </div>
         )}
-        {goals.map(g => <GoalCard key={g.id} goal={g} isMe={g.authorId === user.uid} refresh={fetchGoals} rdb={rdb} />)}
+        {goals.map(g => <GoalCard key={g.id} goal={g} isMe={g.authorId === user.uid} refresh={fetchGoals} rdb={rdb} currentUser={user} onDelete={deleteData} />)}
       </div>
     );
   };
@@ -463,8 +475,11 @@ const App: React.FC = () => {
         </div>
         <div id="book-list">
           {books.map(b => (
-            <div key={b.id} className="card">
-              <b>{b.authorName}</b>: {b.text} ({b.status})
+            <div key={b.id} className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div><b>{b.authorName}</b>: {b.text} ({b.status})</div>
+              {(user.role === 'admin' || b.authorId === user.uid) && (
+                <button className="del-btn-small" onClick={() => deleteData(`books/${b.id}`)}>삭제</button>
+              )}
             </div>
           ))}
         </div>
@@ -550,7 +565,7 @@ const App: React.FC = () => {
 
 // --- Helper Components ---
 
-const FeedCard = ({ feed, currentUser, refresh }: any) => {
+const FeedCard = ({ feed, currentUser, refresh, onDelete }: any) => {
   const [showComments, setShowComments] = useState(false);
   const [commentText, setCommentText] = useState('');
   const likesObj = feed.likes || {};
@@ -592,8 +607,13 @@ const FeedCard = ({ feed, currentUser, refresh }: any) => {
   return (
     <div className="feed-card">
       <div className="fc-header">
-        <div className={`av ${feed.authorId === currentUser.uid ? 'av-me' : 'av-other'}`}>{feed.authorName?.[0]}</div>
-        <span className="fc-name">{feed.authorName}</span>
+        <div style={{ display: 'flex', alignItems: 'center', flex: 1 }}>
+          <div className={`av ${feed.authorId === currentUser.uid ? 'av-me' : 'av-other'}`}>{feed.authorName?.[0]}</div>
+          <span className="fc-name">{feed.authorName}</span>
+        </div>
+        {(currentUser.role === 'admin' || feed.authorId === currentUser.uid) && (
+          <button className="del-btn-small" onClick={() => onDelete(`feeds/${feed.id}`)}>삭제</button>
+        )}
       </div>
       {feed.photos?.length > 0 && (
         <div className="fc-photos one">
@@ -618,16 +638,21 @@ const FeedCard = ({ feed, currentUser, refresh }: any) => {
   );
 };
 
-const MemoryCard = ({ memory }: any) => (
+const MemoryCard = ({ memory, currentUser, onDelete }: any) => (
   <div className="memory-card">
-    <div className="mc-header"><b>{memory.authorName}</b> → {memory.toName}</div>
+    <div className="mc-header">
+      <div style={{ flex: 1 }}><b>{memory.authorName}</b> → {memory.toName}</div>
+      {(currentUser.role === 'admin' || memory.authorId === currentUser.uid) && (
+        <button className="del-btn-small" onClick={() => onDelete(`memories/${memory.id}`)}>삭제</button>
+      )}
+    </div>
     {memory.photoUrl && <img className="mc-photo" src={memory.photoUrl} alt="m" />}
     <div className="mc-body">{memory.text}</div>
     <div className="mc-footer"><span className="mc-type type-msg">{memory.type}</span></div>
   </div>
 );
 
-const GoalCard = ({ goal, isMe, refresh, rdb }: any) => {
+const GoalCard = ({ goal, isMe, refresh, rdb, currentUser, onDelete }: any) => {
   const [newSub, setNewSub] = useState('');
   const subs = goal.subGoals || [];
   const pct = subs.length > 0 ? Math.round(subs.filter((s: any) => s.done).length / subs.length * 100) : 0;
@@ -657,7 +682,15 @@ const GoalCard = ({ goal, isMe, refresh, rdb }: any) => {
   return (
     <div className="goal-main-card">
       <div className="gmc-header">
-        <div className="gmc-info"><b>{goal.authorName}</b>: {goal.title} <div className="progress-bar"><div className="progress-fill" style={{ width: `${pct}%` }}></div></div></div>
+        <div className="gmc-info">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+            <b>{goal.authorName}</b>: {goal.title}
+            {(currentUser.role === 'admin' || goal.authorId === currentUser.uid) && (
+              <button className="del-btn-small" onClick={() => onDelete(`goals/${goal.id}`)}>삭제</button>
+            )}
+          </div>
+          <div className="progress-bar"><div className="progress-fill" style={{ width: `${pct}%` }}></div></div>
+        </div>
         <div className="gmc-pct">{pct}%</div>
       </div>
       <div className="sub-goals">
