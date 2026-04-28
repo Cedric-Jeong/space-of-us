@@ -14,8 +14,6 @@ const firebaseConfig = {
   measurementId: "G-11YGRFKJ1H"
 };
 
-console.log("Firebase 초기화 중... DB URL:", firebaseConfig.databaseURL);
-
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const rdb = getDatabase(app);
