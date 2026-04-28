@@ -6,7 +6,9 @@ import {
   signOut, 
   updateProfile,
   GoogleAuthProvider,
-  signInWithPopup
+  signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult
 } from 'firebase/auth';
 import { 
   collection, 
@@ -59,6 +61,14 @@ const App: React.FC = () => {
         setUser(null);
       }
     });
+
+    // 리디렉션 로그인 결과 확인
+    getRedirectResult(auth).catch((err) => {
+      if (err.code === 'auth/unauthorized-domain') {
+        setAuthErr('허용되지 않은 도메인입니다.');
+      }
+    });
+
     return () => unsubscribe();
   }, []);
 
@@ -105,7 +115,17 @@ const App: React.FC = () => {
     try {
       setAuthErr('');
       const provider = new GoogleAuthProvider();
-      await signInWithPopup(auth, provider);
+      
+      // 모바일 환경(인앱 브라우저 포함)인지 확인
+      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+      
+      if (isMobile) {
+        // 모바일에서는 페이지 리디렉션 방식 (카톡 대응)
+        await signInWithRedirect(auth, provider);
+      } else {
+        // PC에서는 편리한 팝업 방식
+        await signInWithPopup(auth, provider);
+      }
     } catch (err: any) {
       setAuthErr('구글 로그인 실패: ' + err.message);
     }
