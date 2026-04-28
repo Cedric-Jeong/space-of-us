@@ -57,19 +57,42 @@ const App: React.FC = () => {
   const [allUsers, setAllUsers] = useState<any[]>([]); 
 
   useEffect(() => {
-    // 1. 이메일 링크 인증 확인
-    if (isSignInWithEmailLink(auth, window.location.href)) {
-      let email = window.localStorage.getItem('emailForSignIn');
-      if (!email) {
-        email = window.prompt('인증을 완료하려면 이메일을 다시 입력해주세요.');
-      }
-      if (email) {
-        setVerifiedEmail(email);
-        setAuthEmail(email);
-        setIsLoginView(false); // 회원가입 화면으로 이동
-        showToast('✅ 이메일 인증 성공! 나머지 정보를 입력해주세요.');
-      }
+    // 1. Firebase auth 객체가 있는지 확인
+    if (!auth) {
+      console.log("Firebase Auth가 아직 준비되지 않았습니다.");
+      return;
     }
+
+    // 2. 이메일 링크 인증 확인 로직을 안전하게 실행
+    const handleEmailLinkAuth = async () => {
+      try {
+        if (isSignInWithEmailLink(auth, window.location.href)) {
+          console.log("이메일 인증 링크 감지됨!");
+          let email = window.localStorage.getItem('emailForSignIn');
+          
+          if (!email) {
+            // localStorage에 없으면 사용자에게 다시 물어봄
+            email = window.prompt('인증을 완료하려면 이메일을 다시 입력해주세요.');
+          }
+
+          if (email) {
+            setVerifiedEmail(email);
+            setAuthEmail(email);
+            setIsLoginView(false); 
+            showToast('✅ 이메일 인증 성공! 나머지 정보를 입력해주세요.');
+            // 사용한 이메일은 삭제 (보안)
+            window.localStorage.removeItem('emailForSignIn');
+          } else {
+            setAuthErr('이메일 정보가 없어 인증을 완료할 수 없습니다.');
+          }
+        }
+      } catch (err: any) {
+        console.error("인증 처리 중 상세 에러:", err);
+        setAuthErr('인증 처리 중 에러가 발생했습니다: ' + err.message);
+      }
+    };
+
+    handleEmailLinkAuth();
 
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser) {
