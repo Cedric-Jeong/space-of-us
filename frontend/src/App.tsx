@@ -238,13 +238,14 @@ const App: React.FC = () => {
         username: authId,
         name: authName,
         email: verifiedEmail,
-        role: 'member',
+        role: 'guest', // 역할을 guest로 변경
         createdAt: serverTimestamp()
       });
       
       showToast('🎉 가입이 완료되었습니다!');
       window.localStorage.removeItem('emailForSignIn');
     } catch (err: any) {
+      console.error("가입 완료 상세 에러:", err);
       setAuthErr('가입 완료 실패: ' + err.message);
     }
   };
