@@ -1,10 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   onAuthStateChanged, 
-  signInWithEmailAndPassword, 
-  createUserWithEmailAndPassword, 
   signOut, 
-  updateProfile,
   GoogleAuthProvider,
   signInWithPopup,
   signInWithRedirect,
@@ -35,12 +32,8 @@ const App: React.FC = () => {
   const [user, setUser] = useState<any>(null);
   const [activeTab, setActiveTab] = useState('feed');
   const [toast, setToast] = useState({ show: false, message: '' });
-  const [isLoginView, setIsLoginView] = useState(true);
 
-  // Auth Inputs
-  const [authEmail, setAuthEmail] = useState('');
-  const [authPw, setAuthPw] = useState('');
-  const [authName, setAuthName] = useState('');
+  // Auth States
   const [authErr, setAuthErr] = useState('');
 
   // App Data
@@ -88,42 +81,16 @@ const App: React.FC = () => {
     setTimeout(() => setToast({ show: false, message: '' }), 2200);
   };
 
-  const handleLogin = async () => {
-    try {
-      setAuthErr('');
-      await signInWithEmailAndPassword(auth, authEmail, authPw);
-    } catch (err: any) {
-      setAuthErr('로그인 실패: 이메일이나 비밀번호를 확인하세요.');
-    }
-  };
-
-  const handleSignup = async () => {
-    try {
-      setAuthErr('');
-      if (!authName) return setAuthErr('닉네임을 입력해주세요.');
-      const cred = await createUserWithEmailAndPassword(auth, authEmail, authPw);
-      await updateProfile(cred.user, { displayName: authName });
-      setUser({ ...cred.user, displayName: authName });
-    } catch (err: any) {
-      setAuthErr('회원가입 실패: ' + err.message);
-    }
-  };
-
   const handleLogout = () => signOut(auth);
 
   const handleGoogleLogin = async () => {
     try {
       setAuthErr('');
       const provider = new GoogleAuthProvider();
-      
-      // 모바일 환경(인앱 브라우저 포함)인지 확인
       const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-      
       if (isMobile) {
-        // 모바일에서는 페이지 리디렉션 방식 (카톡 대응)
         await signInWithRedirect(auth, provider);
       } else {
-        // PC에서는 편리한 팝업 방식
         await signInWithPopup(auth, provider);
       }
     } catch (err: any) {
@@ -329,29 +296,26 @@ const App: React.FC = () => {
     return (
       <div id="auth-screen">
         <div className="auth-logo">우리의 공간 ✦</div>
-        <div className="auth-card">
-          <div className="auth-tabs">
-            <button className={`auth-tab ${isLoginView ? 'active' : ''}`} onClick={() => setIsLoginView(true)}>로그인</button>
-            <button className={`auth-tab ${!isLoginView ? 'active' : ''}`} onClick={() => setIsLoginView(false)}>회원가입</button>
-          </div>
-          <input className="inp" placeholder="이메일" value={authEmail} onChange={e => setAuthEmail(e.target.value)} />
-          {!isLoginView && <input className="inp" placeholder="닉네임" value={authName} onChange={e => setAuthName(e.target.value)} />}
-          <input className="inp" type="password" placeholder="비밀번호" value={authPw} onChange={e => setAuthPw(e.target.value)} />
-          <button className="btn-primary" onClick={isLoginView ? handleLogin : handleSignup}>{isLoginView ? '로그인' : '가입하기'}</button>
-          <div style={{ display: 'flex', alignItems: 'center', margin: '20px 0', color: 'var(--ink3)', fontSize: '12px' }}>
-            <div style={{ flex: 1, height: '1px', background: 'var(--border)' }}></div>
-            <span style={{ margin: '0 10px' }}>또는</span>
-            <div style={{ flex: 1, height: '1px', background: 'var(--border)' }}></div>
-          </div>
+        <div className="auth-sub" style={{ marginBottom: '30px' }}>친구와 함께하는 소중한 기록</div>
+        <div className="auth-card" style={{ textAlign: 'center' }}>
           <button 
             className="btn-primary" 
-            style={{ background: 'white', color: 'var(--ink)', border: '0.5px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px' }}
+            style={{ 
+              background: 'white', 
+              color: 'var(--ink)', 
+              border: '0.5px solid var(--border)', 
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'center', 
+              gap: '10px',
+              padding: '16px'
+            }}
             onClick={handleGoogleLogin}
           >
-            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="G" style={{ width: '18px' }} />
-            구글로 계속하기
+            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="G" style={{ width: '20px' }} />
+            구글 계정으로 시작하기
           </button>
-          <div className="auth-err">{authErr}</div>
+          <div className="auth-err" style={{ marginTop: '15px' }}>{authErr}</div>
         </div>
       </div>
     );
