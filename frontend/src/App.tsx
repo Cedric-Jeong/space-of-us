@@ -177,12 +177,15 @@ const App: React.FC = () => {
 
   const fetchFeeds = async () => {
     try {
+      console.log("피드 가져오는 중...");
       const snap = await get(ref(rdb, 'feeds'));
       if (snap.exists()) {
         const data = snap.val();
+        console.log("데이터 확인:", data);
         const list = Object.keys(data).map(key => ({ id: key, ...data[key] }));
-        setFeeds(list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)));
+        setFeeds(list.sort((a, b) => (Number(b.createdAt) || 0) - (Number(a.createdAt) || 0)));
       } else {
+        console.log("데이터가 없습니다.");
         setFeeds([]);
       }
     } catch (error) {

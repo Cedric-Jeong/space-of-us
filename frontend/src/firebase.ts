@@ -6,6 +6,7 @@ import { getStorage } from "firebase/storage";
 const firebaseConfig = {
   apiKey: "AIzaSyDYI-iCYs9iMc2CLgWbhPsbbIAvjaAARFE",
   authDomain: "space-of-us.firebaseapp.com",
+  databaseURL: "https://space-of-us-default-rtdb.firebaseio.com",
   projectId: "space-of-us",
   storageBucket: "space-of-us.firebasestorage.app",
   messagingSenderId: "555986533527",
