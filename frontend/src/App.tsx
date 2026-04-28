@@ -5,10 +5,14 @@ import {
   createUserWithEmailAndPassword, 
   signOut, 
   updateProfile,
-  GoogleAuthProvider,
+  GoogleAuthProvider, 
   signInWithPopup,
   signInWithRedirect,
-  getRedirectResult
+  getRedirectResult,
+  sendSignInLinkToEmail,
+  isSignInWithEmailLink,
+  signInWithEmailLink,
+  updatePassword
 } from 'firebase/auth';
 import { 
   ref, 
@@ -42,6 +46,8 @@ const App: React.FC = () => {
   const [authName, setAuthName] = useState('');
   const [authErr, setAuthErr] = useState('');
   const [isIdChecked, setIsIdChecked] = useState(false);
+  const [isEmailSent, setIsEmailSent] = useState(false);
+  const [verifiedEmail, setVerifiedEmail] = useState('');
 
   // App Data
   const [feeds, setFeeds] = useState<any[]>([]);
@@ -51,6 +57,20 @@ const App: React.FC = () => {
   const [allUsers, setAllUsers] = useState<any[]>([]); 
 
   useEffect(() => {
+    // 1. 이메일 링크 인증 확인
+    if (isSignInWithEmailLink(auth, window.location.href)) {
+      let email = window.localStorage.getItem('emailForSignIn');
+      if (!email) {
+        email = window.prompt('인증을 완료하려면 이메일을 다시 입력해주세요.');
+      }
+      if (email) {
+        setVerifiedEmail(email);
+        setAuthEmail(email);
+        setIsLoginView(false); // 회원가입 화면으로 이동
+        showToast('✅ 이메일 인증 성공! 나머지 정보를 입력해주세요.');
+      }
+    }
+
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser) {
         const MASTER_ADMIN_EMAIL = 'jjy060503jjy@gmail.com'; 
@@ -157,36 +177,53 @@ const App: React.FC = () => {
     }
   };
 
+  const sendVerificationEmail = async () => {
+    if (!authEmail) return setAuthErr('이메일을 입력해주세요.');
+    try {
+      const actionCodeSettings = {
+        url: window.location.origin, // 인증 후 돌아올 주소
+        handleCodeInApp: true,
+      };
+      await sendSignInLinkToEmail(auth, authEmail, actionCodeSettings);
+      window.localStorage.setItem('emailForSignIn', authEmail);
+      setIsEmailSent(true);
+      showToast('💌 인증 메일을 보냈습니다! 메일함을 확인해주세요.');
+    } catch (err: any) {
+      setAuthErr('메일 발송 실패: ' + err.message);
+    }
+  };
+
   const handleSignup = async () => {
     try {
       setAuthErr('');
-      if (!authEmail) return setAuthErr('이메일을 입력해주세요.');
+      if (!verifiedEmail) return setAuthErr('이메일 인증을 먼저 완료해주세요.');
       if (!isIdChecked) return setAuthErr('아이디 중복 확인을 해주세요.');
       if (!authName) return setAuthErr('닉네임을 입력해주세요.');
+      if (authPw.length < 6) return setAuthErr('비밀번호는 6자 이상이어야 합니다.');
       
-      const cred = await createUserWithEmailAndPassword(auth, authEmail, authPw);
+      // 1. 이메일 링크로 로그인 처리 (계정 생성/인증 동시 진행)
+      const result = await signInWithEmailLink(auth, verifiedEmail, window.location.href);
       
-      const { sendEmailVerification } = await import('firebase/auth');
-      await sendEmailVerification(cred.user);
+      // 2. 비밀번호 설정 (처음 가입 시 비밀번호가 없으므로 설정해줌)
+      await updatePassword(result.user, authPw);
       
-      await updateProfile(cred.user, { displayName: authName });
+      // 3. 프로필 업데이트
+      await updateProfile(result.user, { displayName: authName });
       
-      await set(ref(rdb, `usernames/${authId}`), authEmail);
-      await set(ref(rdb, `users/${cred.user.uid}`), {
+      // 4. 데이터베이스 저장
+      await set(ref(rdb, `usernames/${authId}`), verifiedEmail);
+      await set(ref(rdb, `users/${result.user.uid}`), {
         username: authId,
         name: authName,
-        email: authEmail,
+        email: verifiedEmail,
         role: 'member',
         createdAt: serverTimestamp()
       });
       
-      showToast('💌 인증 메일을 보냈습니다! 확인 후 로그인해주세요.');
+      showToast('🎉 가입이 완료되었습니다!');
+      window.localStorage.removeItem('emailForSignIn');
     } catch (err: any) {
-      if (err.code === 'auth/email-already-in-use') {
-        setAuthErr('이미 사용 중인 이메일입니다.');
-      } else {
-        setAuthErr('회원가입 실패: ' + err.message);
-      }
+      setAuthErr('가입 완료 실패: ' + err.message);
     }
   };
 
@@ -546,22 +583,34 @@ const App: React.FC = () => {
             <>
               <input className="inp" placeholder="아이디" value={authId} onChange={e => setAuthId(e.target.value)} />
               <input className="inp" type="password" placeholder="비밀번호" value={authPw} onChange={e => setAuthPw(e.target.value)} />
+              <button className="btn-primary" onClick={handleLogin}>로그인</button>
             </>
           ) : (
             <>
-              <input className="inp" placeholder="이메일" value={authEmail} onChange={e => setAuthEmail(e.target.value)} />
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <input className="inp" style={{ flex: 1 }} placeholder="사용할 아이디" value={authId} onChange={e => { setAuthId(e.target.value); setIsIdChecked(false); }} />
-                <button className="tag-chip" style={{ height: '42px', marginTop: '8px', minWidth: '80px' }} onClick={checkIdDuplication}>중복확인</button>
-              </div>
-              <input className="inp" placeholder="닉네임" value={authName} onChange={e => setAuthName(e.target.value)} />
-              <input className="inp" type="password" placeholder="비밀번호" value={authPw} onChange={e => setAuthPw(e.target.value)} />
+              {/* 1단계: 이메일 인증 */}
+              {!verifiedEmail ? (
+                <>
+                  <input className="inp" placeholder="이메일 입력" value={authEmail} onChange={e => setAuthEmail(e.target.value)} disabled={isEmailSent} />
+                  <button className="btn-primary" style={{ background: isEmailSent ? 'var(--ink3)' : '' }} onClick={sendVerificationEmail} disabled={isEmailSent}>
+                    {isEmailSent ? '인증 메일 발송됨' : '인증 메일 보내기'}
+                  </button>
+                  {isEmailSent && <p style={{ fontSize: '11px', color: 'var(--ink3)', marginTop: '8px', textAlign: 'center' }}>메일함의 링크를 클릭하면 가입 창이 활성화됩니다.</p>}
+                </>
+              ) : (
+                /* 2단계: 나머지 정보 입력 */
+                <>
+                  <div className="inp" style={{ background: '#f5f5f5', color: '#888', display: 'flex', alignItems: 'center' }}>{verifiedEmail} (인증됨)</div>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <input className="inp" style={{ flex: 1 }} placeholder="사용할 아이디 (3자 이상)" value={authId} onChange={e => { setAuthId(e.target.value); setIsIdChecked(false); }} />
+                    <button className="tag-chip" style={{ height: '42px', marginTop: '8px', minWidth: '80px' }} onClick={checkIdDuplication}>중복확인</button>
+                  </div>
+                  <input className="inp" placeholder="닉네임" value={authName} onChange={e => setAuthName(e.target.value)} />
+                  <input className="inp" type="password" placeholder="비밀번호 (6자 이상)" value={authPw} onChange={e => setAuthPw(e.target.value)} />
+                  <button className="btn-primary" onClick={handleSignup}>가입 완료</button>
+                </>
+              )}
             </>
           )}
-          
-          <button className="btn-primary" onClick={isLoginView ? handleLogin : handleSignup}>
-            {isLoginView ? '로그인' : '가입하기'}
-          </button>
           
           <div style={{ display: 'flex', alignItems: 'center', margin: '20px 0', color: 'var(--ink3)', fontSize: '12px' }}>
             <div style={{ flex: 1, height: '1px', background: 'var(--border)' }}></div>
