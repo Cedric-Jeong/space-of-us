@@ -648,62 +648,24 @@ const App: React.FC = () => {
   };
 
   const AuthModal = () => (
-    <div id="auth-screen" style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', zIndex: 1000, background: 'rgba(255,255,255,0.95)', overflowY: 'auto', padding: '40px 20px' }}>
+    <div id="auth-screen" style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', zIndex: 1000, background: 'rgba(255,255,255,0.95)', overflowY: 'auto', padding: '40px 20px', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
       <button onClick={() => setShowAuthModal(false)} style={{ position: 'absolute', top: '20px', right: '20px', background: 'none', border: 'none', fontSize: '24px', cursor: 'pointer' }}>✕</button>
-      <div className="auth-logo">우리의 공간 ✦</div>
-      <div className="auth-sub">친구와 함께하는 소중한 기록</div>
-      <div className="auth-card">
-        <div className="auth-tabs">
-          <button className={`auth-tab ${isLoginView ? 'active' : ''}`} onClick={() => setIsLoginView(true)}>로그인</button>
-          <button className={`auth-tab ${!isLoginView ? 'active' : ''}`} onClick={() => setIsLoginView(false)}>회원가입</button>
-        </div>
-        
-        {isLoginView ? (
-          <>
-            <input className="inp" placeholder="아이디" value={authId} onChange={e => setAuthId(e.target.value)} />
-            <input className="inp" type="password" placeholder="비밀번호" value={authPw} onChange={e => setAuthPw(e.target.value)} />
-            <button className="btn-primary" onClick={handleLogin}>로그인</button>
-          </>
-        ) : (
-          <>
-            {/* 1단계: 이메일 인증 */}
-            {!verifiedEmail ? (
-              <>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <input className="inp" style={{ flex: 1 }} placeholder="이메일 입력" value={authEmail} onChange={e => { setAuthEmail(e.target.value); setIsEmailChecked(false); }} disabled={isEmailSent} />
-                  <button className="tag-chip" style={{ height: '42px', marginTop: '8px', minWidth: '80px', background: isEmailChecked ? '#e8f5e9' : '' }} onClick={checkEmailDuplication} disabled={isEmailSent}>
-                    {isEmailChecked ? '확인됨' : '중복확인'}
-                  </button>
-                </div>
-                <button className="btn-primary" style={{ background: isEmailSent || !isEmailChecked ? 'var(--ink3)' : '' }} onClick={sendVerificationEmail} disabled={isEmailSent || !isEmailChecked}>
-                  {isEmailSent ? '인증 메일 발송됨' : '인증 메일 보내기'}
-                </button>
-                {isEmailSent && <p style={{ fontSize: '11px', color: 'var(--ink3)', marginTop: '8px', textAlign: 'center' }}>메일함의 링크를 클릭하면 가입 창이 활성화됩니다.</p>}
-                {!isEmailChecked && !isEmailSent && <p style={{ fontSize: '11px', color: 'var(--ink3)', marginTop: '8px', textAlign: 'center' }}>이메일 중복 확인을 먼저 해주세요.</p>}
-              </>
-            ) : (
+      
+      <div className="auth-logo" style={{ marginBottom: '10px' }}>우리의 공간 ✦</div>
+      <div className="auth-sub" style={{ marginBottom: '30px' }}>친구와 함께하는 소중한 기록</div>
 
-              /* 2단계: 나머지 정보 입력 */
-              <>
-                <div className="inp" style={{ background: '#f5f5f5', color: '#888', display: 'flex', alignItems: 'center' }}>{verifiedEmail} (인증됨)</div>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <input className="inp" style={{ flex: 1 }} placeholder="사용할 아이디 (3자 이상)" value={authId} onChange={e => { setAuthId(e.target.value); setIsIdChecked(false); }} />
-                  <button className="tag-chip" style={{ height: '42px', marginTop: '8px', minWidth: '80px' }} onClick={checkIdDuplication}>중복확인</button>
-                </div>
-                <input className="inp" placeholder="닉네임" value={authName} onChange={e => setAuthName(e.target.value)} />
-                <input className="inp" type="password" placeholder="비밀번호 (6자 이상)" value={authPw} onChange={e => setAuthPw(e.target.value)} />
-                <button className="btn-primary" onClick={handleSignup}>가입 완료</button>
-              </>
-            )}
-          </>
-        )}
-        
-        <div style={{ display: 'flex', alignItems: 'center', margin: '20px 0', color: 'var(--ink3)', fontSize: '12px' }}>
-          <div style={{ flex: 1, height: '1px', background: 'var(--border)' }}></div>
-          <span style={{ margin: '0 10px' }}>또는</span>
-          <div style={{ flex: 1, height: '1px', background: 'var(--border)' }}></div>
+      <div className="auth-card" style={{ maxWidth: '400px', width: '100%', textAlign: 'center', padding: '30px' }}>
+        <div style={{ marginBottom: '30px', lineHeight: '1.8', color: 'var(--ink2)', fontSize: '15px', wordBreak: 'keep-all' }}>
+          <p>🌿 <b>소소한 일상부터 깊은 생각까지</b></p>
+          <p>이곳은 우리만의 이야기를 차곡차곡 쌓아가는 공간입니다.</p>
+          <br />
+          <p>🎯 함께 목표를 세우고 달성하며,</p>
+          <p>📚 읽은 책의 감동을 나누고,</p>
+          <p>💌 서로에게 따뜻한 응원의 한마디를 남겨보세요.</p>
+          <br />
+          <p style={{ color: 'var(--brand)', fontWeight: '600' }}>지금 바로 시작해보세요! ✨</p>
         </div>
-        
+
         <button 
           className="btn-primary" 
           style={{ 
@@ -713,14 +675,18 @@ const App: React.FC = () => {
             display: 'flex', 
             alignItems: 'center', 
             justifyContent: 'center', 
-            gap: '10px' 
+            gap: '12px',
+            padding: '12px 0',
+            fontSize: '15px',
+            boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
           }}
           onClick={handleGoogleLogin}
         >
-          <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="G" style={{ width: '18px' }} />
-          구글로 계속하기
+          <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="G" style={{ width: '20px' }} />
+          구글 계정으로 간편하게 시작하기
         </button>
-        <div className="auth-err">{authErr}</div>
+        
+        {authErr && <div className="auth-err" style={{ marginTop: '15px' }}>{authErr}</div>}
       </div>
     </div>
   );
