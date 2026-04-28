@@ -48,6 +48,8 @@ const App: React.FC = () => {
   const [isEmailSent, setIsEmailSent] = useState(false);
   const [verifiedEmail, setVerifiedEmail] = useState('');
 
+  const [showAuthModal, setShowAuthModal] = useState(false);
+
   // App Data
   const [feeds, setFeeds] = useState<any[]>([]);
   const [memories, setMemories] = useState<any[]>([]);
@@ -78,6 +80,7 @@ const App: React.FC = () => {
             setVerifiedEmail(email);
             setAuthEmail(email);
             setIsLoginView(false); 
+            setShowAuthModal(true);
             showToast('✅ 이메일 인증 성공! 나머지 정보를 입력해주세요.');
             // 사용한 이메일은 삭제 (보안)
             window.localStorage.removeItem('emailForSignIn');
@@ -100,9 +103,12 @@ const App: React.FC = () => {
         try {
           const userSnap = await get(child(ref(rdb), `users/${currentUser.uid}`));
           let role = 'member';
+          let username = '';
           
           if (userSnap.exists()) {
-            role = userSnap.val().role || 'member';
+            const userData = userSnap.val();
+            role = userData.role || 'member';
+            username = userData.username || '';
           } else {
             role = (currentUser.email === MASTER_ADMIN_EMAIL) ? 'admin' : 'member'; 
             await set(ref(rdb, `users/${currentUser.uid}`), {
@@ -117,8 +123,10 @@ const App: React.FC = () => {
             uid: currentUser.uid,
             email: currentUser.email,
             displayName: currentUser.displayName,
-            role: role
+            role: role,
+            username: username
           });
+          setShowAuthModal(false);
         } catch (error) {
           console.error("사용자 정보 로드 중 에러:", error);
           setUser({
@@ -144,10 +152,8 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (user) {
-      loadAll();
-      if (user.role === 'admin') fetchAllUsers();
-    }
+    loadAll();
+    if (user && user.role === 'admin') fetchAllUsers();
   }, [user, activeTab]);
 
   const loadAll = () => {
@@ -199,8 +205,39 @@ const App: React.FC = () => {
     }
   };
 
+  const [isEmailChecked, setIsEmailChecked] = useState(false);
+
+  const checkEmailDuplication = async () => {
+    if (!authEmail) return setAuthErr('이메일을 입력해주세요.');
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(authEmail)) return setAuthErr('유효한 이메일 형식이 아닙니다.');
+    
+    try {
+      const usersSnap = await get(ref(rdb, 'users'));
+      let emailExists = false;
+      if (usersSnap.exists()) {
+        const users = usersSnap.val();
+        emailExists = Object.values(users).some((u: any) => u.email === authEmail);
+      }
+
+      if (emailExists) {
+        setAuthErr('이미 가입된 이메일입니다.');
+        setIsEmailChecked(false);
+      } else {
+        showToast('✅ 가입 가능한 이메일입니다!');
+        setIsEmailChecked(true);
+        setAuthErr('');
+      }
+    } catch (e) {
+      console.error("이메일 중복 확인 중 에러:", e);
+      setAuthErr('중복 확인 중 에러가 발생했습니다.');
+    }
+  };
+
   const sendVerificationEmail = async () => {
     if (!authEmail) return setAuthErr('이메일을 입력해주세요.');
+    if (!isEmailChecked) return setAuthErr('이메일 중복 확인을 먼저 해주세요.');
+
     try {
       const actionCodeSettings = {
         url: window.location.origin, // 인증 후 돌아올 주소
@@ -340,6 +377,7 @@ const App: React.FC = () => {
   };
 
   const deleteData = async (path: string) => {
+    if (!user) return setShowAuthModal(true);
     if (!window.confirm('정말 삭제할까요?')) return;
     try {
       await remove(ref(rdb, path));
@@ -405,6 +443,7 @@ const App: React.FC = () => {
     const [isPosting, setIsPosting] = useState(false);
 
     const postFeed = async () => {
+      if (!user) return setShowAuthModal(true);
       if (!text && photos.length === 0) return showToast('내용을 입력해주세요');
       setIsPosting(true);
       try {
@@ -436,21 +475,28 @@ const App: React.FC = () => {
         <div className="kw-banner">
           <div><div className="kw-label">이달의 키워드</div><div className="kw-words"><span className="kw-word">성장</span><span className="kw-vs">×</span><span className="kw-word">여유</span></div></div>
         </div>
-        <div className="write-box">
-          <textarea placeholder="오늘 어떤 하루였어? ✍️" value={text} onChange={e => setText(e.target.value)} />
-          <div className="photo-row">
-            {photos.map((p, i) => <img key={i} className="photo-preview" src={URL.createObjectURL(p)} alt="p" />)}
-            <label htmlFor="photo-input" className="photo-add">+</label>
+        {user ? (
+          <div className="write-box">
+            <textarea placeholder="오늘 어떤 하루였어? ✍️" value={text} onChange={e => setText(e.target.value)} />
+            <div className="photo-row">
+              {photos.map((p, i) => <img key={i} className="photo-preview" src={URL.createObjectURL(p)} alt="p" />)}
+              <label htmlFor="photo-input" className="photo-add">+</label>
+            </div>
+            <input type="file" id="photo-input" multiple onChange={e => setPhotos(Array.from(e.target.files || []).slice(0, 3))} />
+            <div className="write-footer">
+              {['daily', 'thought', 'photo'].map(t => <button key={t} className={`tag-chip ${tag === t ? 'sel' : ''}`} onClick={() => setTag(t)}>{t==='daily'?'일상':t==='thought'?'생각':'사진'}</button>)}
+              <button className="post-btn" onClick={postFeed} disabled={isPosting}>{isPosting ? '올리는 중...' : '올리기'}</button>
+            </div>
           </div>
-          <input type="file" id="photo-input" multiple onChange={e => setPhotos(Array.from(e.target.files || []).slice(0, 3))} />
-          <div className="write-footer">
-            {['daily', 'thought', 'photo'].map(t => <button key={t} className={`tag-chip ${tag === t ? 'sel' : ''}`} onClick={() => setTag(t)}>{t==='daily'?'일상':t==='thought'?'생각':'사진'}</button>)}
-            <button className="post-btn" onClick={postFeed} disabled={isPosting}>{isPosting ? '올리는 중...' : '올리기'}</button>
+        ) : (
+          <div className="write-box" style={{ textAlign: 'center', padding: '20px' }}>
+            <p style={{ color: 'var(--ink3)', marginBottom: '12px' }}>로그인하고 소중한 일상을 기록해보세요! ✨</p>
+            <button className="btn-primary" style={{ width: 'auto', padding: '8px 20px' }} onClick={() => setShowAuthModal(true)}>로그인 / 회원가입</button>
           </div>
-        </div>
+        )}
         <div className="section-label">최근 기록</div>
         <div id="feed-list">
-          {feeds.length === 0 ? <div className="empty">기록이 없어요.</div> : feeds.map(f => <FeedCard key={f.id} feed={f} currentUser={user} refresh={fetchFeeds} onDelete={deleteData} />)}
+          {feeds.length === 0 ? <div className="empty">기록이 없어요.</div> : feeds.map(f => <FeedCard key={f.id} feed={f} currentUser={user} refresh={fetchFeeds} onDelete={deleteData} onAuthRequired={() => setShowAuthModal(true)} />)}
         </div>
       </div>
     );
@@ -464,6 +510,7 @@ const App: React.FC = () => {
     const [isPosting, setIsPosting] = useState(false);
 
     const postMemory = async () => {
+      if (!user) return setShowAuthModal(true);
       if (!text && !photo) return showToast('내용을 입력해주세요');
       setIsPosting(true);
       try {
@@ -491,21 +538,28 @@ const App: React.FC = () => {
 
     return (
       <div className={`tab-panel ${activeTab === 'memory' ? 'active' : ''}`}>
-        <div className="write-box">
-          <div className="type-select">
-            {['msg', 'memory', 'advice', 'cheer'].map(t => <button key={t} className={`type-btn ${type === t ? 'sel' : ''}`} onClick={() => setType(t)}>{t==='msg'?'💬 말':'📸 추억'}</button>)}
+        {user ? (
+          <div className="write-box">
+            <div className="type-select">
+              {['msg', 'memory', 'advice', 'cheer'].map(t => <button key={t} className={`type-btn ${type === t ? 'sel' : ''}`} onClick={() => setType(t)}>{t==='msg'?'💬 말':'📸 추억'}</button>)}
+            </div>
+            <textarea placeholder="남기고 싶은 말..." style={{ minHeight: '90px' }} value={text} onChange={e => setText(e.target.value)} />
+            <div className="photo-row">
+              {photo && <img className="photo-preview" src={URL.createObjectURL(photo)} alt="p" />}
+              <label htmlFor="mem-photo-input" className="photo-add">+</label>
+            </div>
+            <input type="file" id="mem-photo-input" onChange={e => setPhoto(e.target.files?.[0] || null)} />
+            <div className="write-footer">
+              <input className="tag-chip" placeholder="To. 닉네임" value={toName} onChange={e => setToName(e.target.value)} />
+              <button className="post-btn" onClick={postMemory} disabled={isPosting}>남기기</button>
+            </div>
           </div>
-          <textarea placeholder="남기고 싶은 말..." style={{ minHeight: '90px' }} value={text} onChange={e => setText(e.target.value)} />
-          <div className="photo-row">
-            {photo && <img className="photo-preview" src={URL.createObjectURL(photo)} alt="p" />}
-            <label htmlFor="mem-photo-input" className="photo-add">+</label>
+        ) : (
+          <div className="write-box" style={{ textAlign: 'center', padding: '20px' }}>
+            <p style={{ color: 'var(--ink3)', marginBottom: '12px' }}>로그인하고 친구들에게 메시지를 남겨보세요! 💌</p>
+            <button className="btn-primary" style={{ width: 'auto', padding: '8px 20px' }} onClick={() => setShowAuthModal(true)}>로그인 / 회원가입</button>
           </div>
-          <input type="file" id="mem-photo-input" onChange={e => setPhoto(e.target.files?.[0] || null)} />
-          <div className="write-footer">
-            <input className="tag-chip" placeholder="To. 닉네임" value={toName} onChange={e => setToName(e.target.value)} />
-            <button className="post-btn" onClick={postMemory} disabled={isPosting}>남기기</button>
-          </div>
-        </div>
+        )}
         <div id="memory-list">{memories.map(m => <MemoryCard key={m.id} memory={m} currentUser={user} onDelete={deleteData} />)}</div>
       </div>
     );
@@ -517,6 +571,7 @@ const App: React.FC = () => {
     const [subGoal, setSubGoal] = useState('');
 
     const addGoal = async () => {
+      if (!user) return setShowAuthModal(true);
       if (!title) return showToast('목표를 입력하세요');
       try {
         const newGoalRef = push(ref(rdb, 'goals'));
@@ -535,15 +590,15 @@ const App: React.FC = () => {
 
     return (
       <div className={`tab-panel ${activeTab === 'goals' ? 'active' : ''}`}>
-        <button className="post-btn" style={{ width: '100%', marginBottom: '16px' }} onClick={() => setShowForm(!showForm)}>+ 목표 추가</button>
-        {showForm && (
+        <button className="post-btn" style={{ width: '100%', marginBottom: '16px' }} onClick={() => user ? setShowForm(!showForm) : setShowAuthModal(true)}>+ 목표 추가</button>
+        {showForm && user && (
           <div className="add-goal-form">
             <input className="add-goal-inp" placeholder="목표 이름" value={title} onChange={e => setTitle(e.target.value)} />
             <input className="add-goal-inp" placeholder="첫 세부 목표" value={subGoal} onChange={e => setSubGoal(e.target.value)} />
             <button className="btn-save" onClick={addGoal}>저장</button>
           </div>
         )}
-        {goals.map(g => <GoalCard key={g.id} goal={g} isMe={g.authorId === user.uid} refresh={fetchGoals} rdb={rdb} currentUser={user} onDelete={deleteData} />)}
+        {goals.map(g => <GoalCard key={g.id} goal={g} isMe={user && g.authorId === user.uid} refresh={fetchGoals} rdb={rdb} currentUser={user} onDelete={deleteData} onAuthRequired={() => setShowAuthModal(true)} />)}
       </div>
     );
   };
@@ -553,6 +608,7 @@ const App: React.FC = () => {
     const [status, setStatus] = useState('done');
 
     const postBook = async () => {
+      if (!user) return setShowAuthModal(true);
       if (!text) return showToast('내용 입력');
       try {
         const newBookRef = push(ref(rdb, 'books'));
@@ -581,7 +637,7 @@ const App: React.FC = () => {
           {books.map(b => (
             <div key={b.id} className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div><b>{b.authorName}</b>: {b.text} ({b.status})</div>
-              {(user.role === 'admin' || b.authorId === user.uid) && (
+              {user && (user.role === 'admin' || b.authorId === user.uid) && (
                 <button className="del-btn-small" onClick={() => deleteData(`books/${b.id}`)}>삭제</button>
               )}
             </div>
@@ -591,85 +647,97 @@ const App: React.FC = () => {
     );
   };
 
-  if (!user) {
-    return (
-      <div id="auth-screen">
-        <div className="auth-logo">우리의 공간 ✦</div>
-        <div className="auth-sub">친구와 함께하는 소중한 기록</div>
-        <div className="auth-card">
-          <div className="auth-tabs">
-            <button className={`auth-tab ${isLoginView ? 'active' : ''}`} onClick={() => setIsLoginView(true)}>로그인</button>
-            <button className={`auth-tab ${!isLoginView ? 'active' : ''}`} onClick={() => setIsLoginView(false)}>회원가입</button>
-          </div>
-          
-          {isLoginView ? (
-            <>
-              <input className="inp" placeholder="아이디" value={authId} onChange={e => setAuthId(e.target.value)} />
-              <input className="inp" type="password" placeholder="비밀번호" value={authPw} onChange={e => setAuthPw(e.target.value)} />
-              <button className="btn-primary" onClick={handleLogin}>로그인</button>
-            </>
-          ) : (
-            <>
-              {/* 1단계: 이메일 인증 */}
-              {!verifiedEmail ? (
-                <>
-                  <input className="inp" placeholder="이메일 입력" value={authEmail} onChange={e => setAuthEmail(e.target.value)} disabled={isEmailSent} />
-                  <button className="btn-primary" style={{ background: isEmailSent ? 'var(--ink3)' : '' }} onClick={sendVerificationEmail} disabled={isEmailSent}>
-                    {isEmailSent ? '인증 메일 발송됨' : '인증 메일 보내기'}
-                  </button>
-                  {isEmailSent && <p style={{ fontSize: '11px', color: 'var(--ink3)', marginTop: '8px', textAlign: 'center' }}>메일함의 링크를 클릭하면 가입 창이 활성화됩니다.</p>}
-                </>
-              ) : (
-                /* 2단계: 나머지 정보 입력 */
-                <>
-                  <div className="inp" style={{ background: '#f5f5f5', color: '#888', display: 'flex', alignItems: 'center' }}>{verifiedEmail} (인증됨)</div>
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <input className="inp" style={{ flex: 1 }} placeholder="사용할 아이디 (3자 이상)" value={authId} onChange={e => { setAuthId(e.target.value); setIsIdChecked(false); }} />
-                    <button className="tag-chip" style={{ height: '42px', marginTop: '8px', minWidth: '80px' }} onClick={checkIdDuplication}>중복확인</button>
-                  </div>
-                  <input className="inp" placeholder="닉네임" value={authName} onChange={e => setAuthName(e.target.value)} />
-                  <input className="inp" type="password" placeholder="비밀번호 (6자 이상)" value={authPw} onChange={e => setAuthPw(e.target.value)} />
-                  <button className="btn-primary" onClick={handleSignup}>가입 완료</button>
-                </>
-              )}
-            </>
-          )}
-          
-          <div style={{ display: 'flex', alignItems: 'center', margin: '20px 0', color: 'var(--ink3)', fontSize: '12px' }}>
-            <div style={{ flex: 1, height: '1px', background: 'var(--border)' }}></div>
-            <span style={{ margin: '0 10px' }}>또는</span>
-            <div style={{ flex: 1, height: '1px', background: 'var(--border)' }}></div>
-          </div>
-          
-          <button 
-            className="btn-primary" 
-            style={{ 
-              background: 'white', 
-              color: 'var(--ink)', 
-              border: '0.5px solid var(--border)', 
-              display: 'flex', 
-              alignItems: 'center', 
-              justifyContent: 'center', 
-              gap: '10px' 
-            }}
-            onClick={handleGoogleLogin}
-          >
-            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="G" style={{ width: '18px' }} />
-            구글로 계속하기
-          </button>
-          <div className="auth-err">{authErr}</div>
+  const AuthModal = () => (
+    <div id="auth-screen" style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', zIndex: 1000, background: 'rgba(255,255,255,0.95)', overflowY: 'auto', padding: '40px 20px' }}>
+      <button onClick={() => setShowAuthModal(false)} style={{ position: 'absolute', top: '20px', right: '20px', background: 'none', border: 'none', fontSize: '24px', cursor: 'pointer' }}>✕</button>
+      <div className="auth-logo">우리의 공간 ✦</div>
+      <div className="auth-sub">친구와 함께하는 소중한 기록</div>
+      <div className="auth-card">
+        <div className="auth-tabs">
+          <button className={`auth-tab ${isLoginView ? 'active' : ''}`} onClick={() => setIsLoginView(true)}>로그인</button>
+          <button className={`auth-tab ${!isLoginView ? 'active' : ''}`} onClick={() => setIsLoginView(false)}>회원가입</button>
         </div>
+        
+        {isLoginView ? (
+          <>
+            <input className="inp" placeholder="아이디" value={authId} onChange={e => setAuthId(e.target.value)} />
+            <input className="inp" type="password" placeholder="비밀번호" value={authPw} onChange={e => setAuthPw(e.target.value)} />
+            <button className="btn-primary" onClick={handleLogin}>로그인</button>
+          </>
+        ) : (
+          <>
+            {/* 1단계: 이메일 인증 */}
+            {!verifiedEmail ? (
+              <>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <input className="inp" style={{ flex: 1 }} placeholder="이메일 입력" value={authEmail} onChange={e => { setAuthEmail(e.target.value); setIsEmailChecked(false); }} disabled={isEmailSent} />
+                  <button className="tag-chip" style={{ height: '42px', marginTop: '8px', minWidth: '80px', background: isEmailChecked ? '#e8f5e9' : '' }} onClick={checkEmailDuplication} disabled={isEmailSent}>
+                    {isEmailChecked ? '확인됨' : '중복확인'}
+                  </button>
+                </div>
+                <button className="btn-primary" style={{ background: isEmailSent || !isEmailChecked ? 'var(--ink3)' : '' }} onClick={sendVerificationEmail} disabled={isEmailSent || !isEmailChecked}>
+                  {isEmailSent ? '인증 메일 발송됨' : '인증 메일 보내기'}
+                </button>
+                {isEmailSent && <p style={{ fontSize: '11px', color: 'var(--ink3)', marginTop: '8px', textAlign: 'center' }}>메일함의 링크를 클릭하면 가입 창이 활성화됩니다.</p>}
+                {!isEmailChecked && !isEmailSent && <p style={{ fontSize: '11px', color: 'var(--ink3)', marginTop: '8px', textAlign: 'center' }}>이메일 중복 확인을 먼저 해주세요.</p>}
+              </>
+            ) : (
+
+              /* 2단계: 나머지 정보 입력 */
+              <>
+                <div className="inp" style={{ background: '#f5f5f5', color: '#888', display: 'flex', alignItems: 'center' }}>{verifiedEmail} (인증됨)</div>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <input className="inp" style={{ flex: 1 }} placeholder="사용할 아이디 (3자 이상)" value={authId} onChange={e => { setAuthId(e.target.value); setIsIdChecked(false); }} />
+                  <button className="tag-chip" style={{ height: '42px', marginTop: '8px', minWidth: '80px' }} onClick={checkIdDuplication}>중복확인</button>
+                </div>
+                <input className="inp" placeholder="닉네임" value={authName} onChange={e => setAuthName(e.target.value)} />
+                <input className="inp" type="password" placeholder="비밀번호 (6자 이상)" value={authPw} onChange={e => setAuthPw(e.target.value)} />
+                <button className="btn-primary" onClick={handleSignup}>가입 완료</button>
+              </>
+            )}
+          </>
+        )}
+        
+        <div style={{ display: 'flex', alignItems: 'center', margin: '20px 0', color: 'var(--ink3)', fontSize: '12px' }}>
+          <div style={{ flex: 1, height: '1px', background: 'var(--border)' }}></div>
+          <span style={{ margin: '0 10px' }}>또는</span>
+          <div style={{ flex: 1, height: '1px', background: 'var(--border)' }}></div>
+        </div>
+        
+        <button 
+          className="btn-primary" 
+          style={{ 
+            background: 'white', 
+            color: 'var(--ink)', 
+            border: '0.5px solid var(--border)', 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'center', 
+            gap: '10px' 
+          }}
+          onClick={handleGoogleLogin}
+        >
+          <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="G" style={{ width: '18px' }} />
+          구글로 계속하기
+        </button>
+        <div className="auth-err">{authErr}</div>
       </div>
-    );
-  }
+    </div>
+  );
 
   return (
     <div id="app">
       <div className="app-header">
         <div className="app-title">우리의 공간 ✦</div>
         <div className="header-user">
-          <div className="user-av">{(user.displayName || user.email || '?')[0].toUpperCase()}</div>
-          <button className="logout-btn" onClick={handleLogout}>로그아웃</button>
+          {user ? (
+            <>
+              <div className="user-av">{(user.displayName || user.email || '?')[0].toUpperCase()}</div>
+              <button className="logout-btn" onClick={handleLogout}>로그아웃</button>
+            </>
+          ) : (
+            <button className="logout-btn" style={{ background: 'var(--brand)', color: 'white', border: 'none' }} onClick={() => setShowAuthModal(true)}>로그인</button>
+          )}
         </div>
       </div>
       <div className="tab-bar">
@@ -678,7 +746,7 @@ const App: React.FC = () => {
             {t === 'feed' ? '🌿피드' : t === 'memory' ? '💌메시지' : t === 'goals' ? '🎯목표' : '📚독서'}
           </button>
         ))}
-        {user.role === 'admin' && (
+        {user && user.role === 'admin' && (
           <button className={`tb ${activeTab === 'admin' ? 'active' : ''}`} onClick={() => setActiveTab('admin')}>
             ⚙️관리
           </button>
@@ -689,8 +757,9 @@ const App: React.FC = () => {
         {activeTab === 'memory' && <MemoryPanel />}
         {activeTab === 'goals' && <GoalPanel />}
         {activeTab === 'books' && <BookPanel />}
-        {activeTab === 'admin' && user.role === 'admin' && <AdminPanel />}
+        {activeTab === 'admin' && user && user.role === 'admin' && <AdminPanel />}
       </div>
+      {showAuthModal && <AuthModal />}
       <Toast message={toast.message} show={toast.show} />
     </div>
   );
@@ -698,14 +767,15 @@ const App: React.FC = () => {
 
 // --- Helper Components ---
 
-const FeedCard = ({ feed, currentUser, refresh, onDelete }: any) => {
+const FeedCard = ({ feed, currentUser, refresh, onDelete, onAuthRequired }: any) => {
   const [showComments, setShowComments] = useState(false);
   const [commentText, setCommentText] = useState('');
   const likesObj = feed.likes || {};
   const likesCount = Object.keys(likesObj).length;
-  const liked = !!likesObj[currentUser.uid];
+  const liked = currentUser ? !!likesObj[currentUser.uid] : false;
 
   const toggleLike = async () => {
+    if (!currentUser) return onAuthRequired();
     try {
       const feedRef = ref(rdb, `feeds/${feed.id}/likes/${currentUser.uid}`);
       if (liked) {
@@ -720,6 +790,7 @@ const FeedCard = ({ feed, currentUser, refresh, onDelete }: any) => {
   };
 
   const addComment = async () => {
+    if (!currentUser) return onAuthRequired();
     if (!commentText.trim()) return;
     try {
       const commentRef = push(ref(rdb, `feeds/${feed.id}/comments`));
@@ -741,10 +812,10 @@ const FeedCard = ({ feed, currentUser, refresh, onDelete }: any) => {
     <div className="feed-card">
       <div className="fc-header">
         <div style={{ display: 'flex', alignItems: 'center', flex: 1 }}>
-          <div className={`av ${feed.authorId === currentUser.uid ? 'av-me' : 'av-other'}`}>{feed.authorName?.[0]}</div>
+          <div className={`av ${currentUser && feed.authorId === currentUser.uid ? 'av-me' : 'av-other'}`}>{feed.authorName?.[0]}</div>
           <span className="fc-name">{feed.authorName}</span>
         </div>
-        {(currentUser.role === 'admin' || feed.authorId === currentUser.uid) && (
+        {currentUser && (currentUser.role === 'admin' || feed.authorId === currentUser.uid) && (
           <button className="del-btn-small" onClick={() => onDelete(`feeds/${feed.id}`)}>삭제</button>
         )}
       </div>
@@ -775,7 +846,7 @@ const MemoryCard = ({ memory, currentUser, onDelete }: any) => (
   <div className="memory-card">
     <div className="mc-header">
       <div style={{ flex: 1 }}><b>{memory.authorName}</b> → {memory.toName}</div>
-      {(currentUser.role === 'admin' || memory.authorId === currentUser.uid) && (
+      {currentUser && (currentUser.role === 'admin' || memory.authorId === currentUser.uid) && (
         <button className="del-btn-small" onClick={() => onDelete(`memories/${memory.id}`)}>삭제</button>
       )}
     </div>
@@ -785,12 +856,13 @@ const MemoryCard = ({ memory, currentUser, onDelete }: any) => (
   </div>
 );
 
-const GoalCard = ({ goal, isMe, refresh, rdb, currentUser, onDelete }: any) => {
+const GoalCard = ({ goal, isMe, refresh, rdb, currentUser, onDelete, onAuthRequired }: any) => {
   const [newSub, setNewSub] = useState('');
   const subs = goal.subGoals || [];
   const pct = subs.length > 0 ? Math.round(subs.filter((s: any) => s.done).length / subs.length * 100) : 0;
 
   const toggleSub = async (idx: number) => {
+    if (!currentUser) return onAuthRequired();
     try {
       const newSubs = [...subs];
       newSubs[idx].done = !newSubs[idx].done;
@@ -802,6 +874,7 @@ const GoalCard = ({ goal, isMe, refresh, rdb, currentUser, onDelete }: any) => {
   };
 
   const addSub = async () => {
+    if (!currentUser) return onAuthRequired();
     if (!newSub) return;
     try {
       const newSubs = [...subs, { text: newSub, done: false }];
@@ -818,7 +891,7 @@ const GoalCard = ({ goal, isMe, refresh, rdb, currentUser, onDelete }: any) => {
         <div className="gmc-info">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
             <b>{goal.authorName}</b>: {goal.title}
-            {(currentUser.role === 'admin' || goal.authorId === currentUser.uid) && (
+            {currentUser && (currentUser.role === 'admin' || goal.authorId === currentUser.uid) && (
               <button className="del-btn-small" onClick={() => onDelete(`goals/${goal.id}`)}>삭제</button>
             )}
           </div>
@@ -833,5 +906,6 @@ const GoalCard = ({ goal, isMe, refresh, rdb, currentUser, onDelete }: any) => {
     </div>
   );
 };
+
 
 export default App;
