@@ -17,10 +17,7 @@ import {
   get, 
   update, 
   child, 
-  query as rdbQuery, 
-  orderByChild, 
   serverTimestamp, 
-  onValue,
   remove
 } from 'firebase/database';
 import { ref as sRef, uploadBytes, getDownloadURL } from 'firebase/storage';
