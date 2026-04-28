@@ -430,41 +430,41 @@ const App: React.FC = () => {
 
   if (!user) {
     return (
-      <div id="auth-screen" style={{ height: '100vh', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', background: 'var(--bg)', padding: '20px' }}>
-        <div className="auth-logo" style={{ marginBottom: '10px', fontSize: '28px' }}>우리의 공간 ✦</div>
-        <div className="auth-sub" style={{ marginBottom: '40px', fontSize: '16px' }}>친구와 함께하는 소중한 기록</div>
+      <div id="auth-screen">
+        <div className="auth-logo">우리의 공간 ✨</div>
+        <div className="auth-sub">친구와 함께하는 소중한 기록</div>
 
-        <div className="auth-card" style={{ maxWidth: '440px', width: '100%', textAlign: 'center', padding: '40px', background: 'white', borderRadius: '24px', boxShadow: '0 10px 30px rgba(0,0,0,0.05)' }}>
-          <div style={{ marginBottom: '40px', lineHeight: '2', color: 'var(--ink2)', fontSize: '15px', wordBreak: 'keep-all' }}>
-            <p style={{ fontSize: '18px', marginBottom: '20px' }}>🌿 <b>반가워요!</b></p>
+        <div className="auth-card-glass">
+          <div className="auth-welcome-msg">
+            <p className="title">🌿 <b>반가워요!</b></p>
             <p>소소한 일상부터 깊은 생각까지,</p>
             <p>우리만의 이야기를 차곡차곡 쌓아가는 공간입니다.</p>
-            <div style={{ margin: '25px 0', width: '30px', height: '1px', background: 'var(--border)', display: 'inline-block' }}></div>
-            <p>🎯 함께 목표를 세우고 달성하며,</p>
-            <p>📚 읽은 책의 감동을 나누고,</p>
-            <p>💌 따뜻한 응원을 주고받아 보세요.</p>
-            <br />
-            <p style={{ color: 'var(--brand)', fontWeight: '600', marginTop: '10px' }}>로그인 후 우리만의 공간을 확인해보세요! ✨</p>
+            
+            <div className="welcome-list">
+              <div className="welcome-item">
+                <span className="welcome-emoji">🎯</span>
+                <span>함께 목표를 세우고 달성하며,</span>
+              </div>
+              <div className="welcome-item">
+                <span className="welcome-emoji">📚</span>
+                <span>읽은 책의 감동을 나누고,</span>
+              </div>
+              <div className="welcome-item">
+                <span className="welcome-emoji">💌</span>
+                <span>따뜻한 응원을 주고받아 보세요.</span>
+              </div>
+            </div>
+            
+            <p style={{ color: 'var(--sage-d)', fontWeight: '600', marginTop: '20px' }}>
+              로그인 후 우리만의 공간을 확인해보세요!
+            </p>
           </div>
 
           <button 
-            className="btn-primary" 
-            style={{ 
-              background: 'white', 
-              color: 'var(--ink)', 
-              border: '1px solid var(--border)', 
-              display: 'flex', 
-              alignItems: 'center', 
-              justifyContent: 'center', 
-              gap: '12px',
-              padding: '14px 0',
-              fontSize: '16px',
-              borderRadius: '16px',
-              width: '100%'
-            }}
+            className="google-pill-btn" 
             onClick={handleGoogleLogin}
           >
-            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="G" style={{ width: '22px' }} />
+            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="G" />
             구글 계정으로 시작하기
           </button>
           {authErr && <div className="auth-err" style={{ marginTop: '20px', color: '#ff4d4f' }}>{authErr}</div>}
