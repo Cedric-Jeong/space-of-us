@@ -4,7 +4,9 @@ import {
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword, 
   signOut, 
-  updateProfile 
+  updateProfile,
+  GoogleAuthProvider,
+  signInWithPopup
 } from 'firebase/auth';
 import { 
   collection, 
@@ -98,6 +100,16 @@ const App: React.FC = () => {
   };
 
   const handleLogout = () => signOut(auth);
+
+  const handleGoogleLogin = async () => {
+    try {
+      setAuthErr('');
+      const provider = new GoogleAuthProvider();
+      await signInWithPopup(auth, provider);
+    } catch (err: any) {
+      setAuthErr('구글 로그인 실패: ' + err.message);
+    }
+  };
 
   const fetchFeeds = async () => {
     const q = query(collection(db, 'feeds'), orderBy('createdAt', 'desc'));
@@ -306,6 +318,19 @@ const App: React.FC = () => {
           {!isLoginView && <input className="inp" placeholder="닉네임" value={authName} onChange={e => setAuthName(e.target.value)} />}
           <input className="inp" type="password" placeholder="비밀번호" value={authPw} onChange={e => setAuthPw(e.target.value)} />
           <button className="btn-primary" onClick={isLoginView ? handleLogin : handleSignup}>{isLoginView ? '로그인' : '가입하기'}</button>
+          <div style={{ display: 'flex', alignItems: 'center', margin: '20px 0', color: 'var(--ink3)', fontSize: '12px' }}>
+            <div style={{ flex: 1, height: '1px', background: 'var(--border)' }}></div>
+            <span style={{ margin: '0 10px' }}>또는</span>
+            <div style={{ flex: 1, height: '1px', background: 'var(--border)' }}></div>
+          </div>
+          <button 
+            className="btn-primary" 
+            style={{ background: 'white', color: 'var(--ink)', border: '0.5px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px' }}
+            onClick={handleGoogleLogin}
+          >
+            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="G" style={{ width: '18px' }} />
+            구글로 계속하기
+          </button>
           <div className="auth-err">{authErr}</div>
         </div>
       </div>
