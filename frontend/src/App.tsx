@@ -725,7 +725,7 @@ const App: React.FC = () => {
         {activeTab === 'books' && <BookPanel />}
         {activeTab === 'admin' && user && user.role === 'admin' && <AdminPanel />}
       </div>
-      {showAuthModal && <AuthModal />}
+      {/* showAuthModal 제거됨 */}
       <Toast message={toast.message} show={toast.show} />
     </div>
   );
