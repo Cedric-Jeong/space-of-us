@@ -11,19 +11,20 @@ import {
   getRedirectResult
 } from 'firebase/auth';
 import { 
-  collection, 
-  addDoc, 
-  getDocs, 
-  query, 
-  orderBy, 
+  ref, 
+  set, 
+  push, 
+  get, 
+  update, 
+  child, 
+  query as rdbQuery, 
+  orderByChild, 
   serverTimestamp, 
-  doc, 
-  updateDoc, 
-  arrayUnion, 
-  arrayRemove 
-} from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { auth, db, storage } from './firebase';
+  onValue,
+  remove
+} from 'firebase/database';
+import { ref as sRef, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { auth, rdb, storage } from './firebase';
 import './index.css';
 
 // --- Components ---
@@ -48,22 +49,51 @@ const App: React.FC = () => {
   const [memories, setMemories] = useState<any[]>([]);
   const [goals, setGoals] = useState<any[]>([]);
   const [books, setBooks] = useState<any[]>([]);
+  const [allUsers, setAllUsers] = useState<any[]>([]); 
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser) {
-        setUser({
-          uid: currentUser.uid,
-          email: currentUser.email,
-          displayName: currentUser.displayName
-        });
+        const MASTER_ADMIN_EMAIL = 'jjy060503jjy@gmail.com'; 
+
+        try {
+          const userSnap = await get(child(ref(rdb), `users/${currentUser.uid}`));
+          let role = 'member';
+          
+          if (userSnap.exists()) {
+            role = userSnap.val().role || 'member';
+          } else {
+            role = (currentUser.email === MASTER_ADMIN_EMAIL) ? 'admin' : 'member'; 
+            await set(ref(rdb, `users/${currentUser.uid}`), {
+              name: currentUser.displayName || '이름없음',
+              email: currentUser.email,
+              role: role,
+              createdAt: serverTimestamp()
+            });
+          }
+
+          setUser({
+            uid: currentUser.uid,
+            email: currentUser.email,
+            displayName: currentUser.displayName,
+            role: role
+          });
+        } catch (error) {
+          console.error("사용자 정보 로드 중 에러:", error);
+          setUser({
+            uid: currentUser.uid,
+            email: currentUser.email,
+            displayName: currentUser.displayName,
+            role: 'member'
+          });
+        }
       } else {
         setUser(null);
       }
     });
 
-    // 리디렉션 로그인 결과 확인
     getRedirectResult(auth).catch((err) => {
+      console.error("리디렉션 에러:", err);
       if (err.code === 'auth/unauthorized-domain') {
         setAuthErr('허용되지 않은 도메인입니다.');
       }
@@ -73,7 +103,10 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (user) loadAll();
+    if (user) {
+      loadAll();
+      if (user.role === 'admin') fetchAllUsers();
+    }
   }, [user, activeTab]);
 
   const loadAll = () => {
@@ -103,7 +136,14 @@ const App: React.FC = () => {
       if (!authName) return setAuthErr('닉네임을 입력해주세요.');
       const cred = await createUserWithEmailAndPassword(auth, authEmail, authPw);
       await updateProfile(cred.user, { displayName: authName });
-      setUser({ ...cred.user, displayName: authName });
+      
+      await set(ref(rdb, `users/${cred.user.uid}`), {
+        name: authName,
+        email: authEmail,
+        role: 'member',
+        createdAt: serverTimestamp()
+      });
+      
     } catch (err: any) {
       setAuthErr('회원가입 실패: ' + err.message);
     }
@@ -119,7 +159,16 @@ const App: React.FC = () => {
       if (isMobile) {
         await signInWithRedirect(auth, provider);
       } else {
-        await signInWithPopup(auth, provider);
+        const cred = await signInWithPopup(auth, provider);
+        const userSnap = await get(child(ref(rdb), `users/${cred.user.uid}`));
+        if (!userSnap.exists()) {
+          await set(ref(rdb, `users/${cred.user.uid}`), {
+            name: cred.user.displayName,
+            email: cred.user.email,
+            role: 'member',
+            createdAt: serverTimestamp()
+          });
+        }
       }
     } catch (err: any) {
       setAuthErr('구글 로그인 실패: ' + err.message);
@@ -127,30 +176,111 @@ const App: React.FC = () => {
   };
 
   const fetchFeeds = async () => {
-    const q = query(collection(db, 'feeds'), orderBy('createdAt', 'desc'));
-    const snap = await getDocs(q);
-    setFeeds(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    try {
+      const snap = await get(ref(rdb, 'feeds'));
+      if (snap.exists()) {
+        const data = snap.val();
+        const list = Object.keys(data).map(key => ({ id: key, ...data[key] }));
+        setFeeds(list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)));
+      } else {
+        setFeeds([]);
+      }
+    } catch (error) {
+      console.error("피드 로드 실패:", error);
+    }
   };
 
   const fetchMemories = async () => {
-    const q = query(collection(db, 'memories'), orderBy('createdAt', 'desc'));
-    const snap = await getDocs(q);
-    setMemories(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    try {
+      const snap = await get(ref(rdb, 'memories'));
+      if (snap.exists()) {
+        const data = snap.val();
+        const list = Object.keys(data).map(key => ({ id: key, ...data[key] }));
+        setMemories(list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)));
+      } else {
+        setMemories([]);
+      }
+    } catch (error) {
+      console.error("메시지 로드 실패:", error);
+    }
   };
 
   const fetchGoals = async () => {
-    const q = query(collection(db, 'goals'), orderBy('createdAt', 'desc'));
-    const snap = await getDocs(q);
-    setGoals(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    try {
+      const snap = await get(ref(rdb, 'goals'));
+      if (snap.exists()) {
+        const data = snap.val();
+        const list = Object.keys(data).map(key => ({ id: key, ...data[key] }));
+        setGoals(list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)));
+      } else {
+        setGoals([]);
+      }
+    } catch (error) {
+      console.error("목표 로드 실패:", error);
+    }
   };
 
   const fetchBooks = async () => {
-    const q = query(collection(db, 'books'), orderBy('createdAt', 'desc'));
-    const snap = await getDocs(q);
-    setBooks(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    try {
+      const snap = await get(ref(rdb, 'books'));
+      if (snap.exists()) {
+        const data = snap.val();
+        const list = Object.keys(data).map(key => ({ id: key, ...data[key] }));
+        setBooks(list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)));
+      } else {
+        setBooks([]);
+      }
+    } catch (error) {
+      console.error("독서기록 로드 실패:", error);
+    }
+  };
+
+  const fetchAllUsers = async () => {
+    try {
+      const snap = await get(ref(rdb, 'users'));
+      if (snap.exists()) {
+        const data = snap.val();
+        setAllUsers(Object.keys(data).map(key => ({ id: key, ...data[key] })));
+      }
+    } catch (error) {
+      console.error("사용자 목록 로드 실패:", error);
+    }
+  };
+
+  const changeUserRole = async (userId: string, newRole: string) => {
+    try {
+      await update(ref(rdb, `users/${userId}`), { role: newRole });
+      showToast('역할이 변경되었습니다.');
+      fetchAllUsers();
+    } catch (e) {
+      showToast('권한 변경 실패');
+    }
   };
 
   // --- Panels ---
+
+  const AdminPanel = () => (
+    <div className={`tab-panel ${activeTab === 'admin' ? 'active' : ''}`}>
+      <div className="section-label">사용자 권한 관리</div>
+      {allUsers.map(u => (
+        <div key={u.id} className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <div style={{ fontWeight: 600 }}>{u.name}</div>
+            <div style={{ fontSize: '11px', color: 'var(--ink3)' }}>{u.email}</div>
+          </div>
+          <select 
+            value={u.role} 
+            onChange={(e) => changeUserRole(u.id, e.target.value)}
+            style={{ padding: '4px 8px', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '12px' }}
+          >
+            <option value="member">멤버</option>
+            <option value="admin">관리자</option>
+            <option value="guest">게스트</option>
+          </select>
+        </div>
+      ))}
+    </div>
+  );
 
   const FeedPanel = () => {
     const [text, setText] = useState('');
@@ -164,20 +294,24 @@ const App: React.FC = () => {
       try {
         const photoUrls = [];
         for (const f of photos) {
-          const sRef = ref(storage, `feeds/${user.uid}/${Date.now()}_${f.name}`);
-          const snap = await uploadBytes(sRef, f);
+          const storageRef = sRef(storage, `feeds/${user.uid}/${Date.now()}_${f.name}`);
+          const snap = await uploadBytes(storageRef, f);
           const url = await getDownloadURL(snap.ref);
           photoUrls.push(url);
         }
-        await addDoc(collection(db, 'feeds'), {
+        const newFeedRef = push(ref(rdb, 'feeds'));
+        await set(newFeedRef, {
           text, tag, photos: photoUrls,
-          authorId: user.uid, authorName: user.displayName || user.email,
-          createdAt: serverTimestamp(), likes: [], comments: []
+          authorId: user.uid, authorName: user.displayName || user.email || '익명',
+          createdAt: serverTimestamp(), likes: {}, comments: {}
         });
         setText(''); setPhotos([]);
         showToast('✅ 피드에 올렸어!');
         fetchFeeds();
-      } catch (e) { showToast('오류 발생'); }
+      } catch (e) { 
+        console.error("피드 저장 에러:", e);
+        showToast('저장 실패. 보안 규칙을 확인하세요.'); 
+      }
       setIsPosting(false);
     };
 
@@ -219,19 +353,23 @@ const App: React.FC = () => {
       try {
         let photoUrl = null;
         if (photo) {
-          const sRef = ref(storage, `memory/${user.uid}/${Date.now()}_${photo.name}`);
-          const snap = await uploadBytes(sRef, photo);
+          const storageRef = sRef(storage, `memory/${user.uid}/${Date.now()}_${photo.name}`);
+          const snap = await uploadBytes(storageRef, photo);
           photoUrl = await getDownloadURL(snap.ref);
         }
-        await addDoc(collection(db, 'memories'), {
+        const newMemoryRef = push(ref(rdb, 'memories'));
+        await set(newMemoryRef, {
           text, toName: toName || '친구', type, photoUrl,
-          authorId: user.uid, authorName: user.displayName || user.email,
+          authorId: user.uid, authorName: user.displayName || user.email || '익명',
           createdAt: serverTimestamp()
         });
         setText(''); setToName(''); setPhoto(null);
         showToast('💌 메시지 남겼어!');
         fetchMemories();
-      } catch (e) { showToast('오류 발생'); }
+      } catch (e) { 
+        console.error("메시지 저장 에러:", e);
+        showToast('저장 실패'); 
+      }
       setIsPosting(false);
     };
 
@@ -264,12 +402,19 @@ const App: React.FC = () => {
 
     const addGoal = async () => {
       if (!title) return showToast('목표를 입력하세요');
-      await addDoc(collection(db, 'goals'), {
-        title, authorId: user.uid, authorName: user.displayName || user.email,
-        subGoals: subGoal ? [{ text: subGoal, done: false }] : [],
-        createdAt: serverTimestamp()
-      });
-      setTitle(''); setSubGoal(''); setShowForm(false); fetchGoals();
+      try {
+        const newGoalRef = push(ref(rdb, 'goals'));
+        await set(newGoalRef, {
+          title, authorId: user.uid, authorName: user.displayName || user.email || '익명',
+          subGoals: subGoal ? [{ text: subGoal, done: false }] : [],
+          createdAt: serverTimestamp()
+        });
+        setTitle(''); setSubGoal(''); setShowForm(false); fetchGoals();
+        showToast('🎯 목표 추가!');
+      } catch (e) {
+        console.error("목표 저장 에러:", e);
+        showToast('저장 실패');
+      }
     };
 
     return (
@@ -282,7 +427,7 @@ const App: React.FC = () => {
             <button className="btn-save" onClick={addGoal}>저장</button>
           </div>
         )}
-        {goals.map(g => <GoalCard key={g.id} goal={g} isMe={g.authorId === user.uid} refresh={fetchGoals} />)}
+        {goals.map(g => <GoalCard key={g.id} goal={g} isMe={g.authorId === user.uid} refresh={fetchGoals} rdb={rdb} />)}
       </div>
     );
   };
@@ -293,11 +438,18 @@ const App: React.FC = () => {
 
     const postBook = async () => {
       if (!text) return showToast('내용 입력');
-      await addDoc(collection(db, 'books'), {
-        text, status, authorId: user.uid, authorName: user.displayName || user.email,
-        createdAt: serverTimestamp()
-      });
-      setText(''); fetchBooks();
+      try {
+        const newBookRef = push(ref(rdb, 'books'));
+        await set(newBookRef, {
+          text, status, authorId: user.uid, authorName: user.displayName || user.email || '익명',
+          createdAt: serverTimestamp()
+        });
+        setText(''); fetchBooks();
+        showToast('📚 책장에 추가!');
+      } catch (e) {
+        console.error("독서기록 저장 에러:", e);
+        showToast('저장 실패');
+      }
     };
 
     return (
@@ -373,13 +525,23 @@ const App: React.FC = () => {
         </div>
       </div>
       <div className="tab-bar">
-        {['feed', 'memory', 'goals', 'books'].map(t => <button key={t} className={`tb ${activeTab === t ? 'active' : ''}`} onClick={() => setActiveTab(t)}>{t === 'feed' ? '🌿피드' : t === 'memory' ? '💌메시지' : t === 'goals' ? '🎯목표' : '📚독서'}</button>)}
+        {['feed', 'memory', 'goals', 'books'].map(t => (
+          <button key={t} className={`tb ${activeTab === t ? 'active' : ''}`} onClick={() => setActiveTab(t)}>
+            {t === 'feed' ? '🌿피드' : t === 'memory' ? '💌메시지' : t === 'goals' ? '🎯목표' : '📚독서'}
+          </button>
+        ))}
+        {user.role === 'admin' && (
+          <button className={`tb ${activeTab === 'admin' ? 'active' : ''}`} onClick={() => setActiveTab('admin')}>
+            ⚙️관리
+          </button>
+        )}
       </div>
       <div className="content-area">
         {activeTab === 'feed' && <FeedPanel />}
         {activeTab === 'memory' && <MemoryPanel />}
         {activeTab === 'goals' && <GoalPanel />}
         {activeTab === 'books' && <BookPanel />}
+        {activeTab === 'admin' && user.role === 'admin' && <AdminPanel />}
       </div>
       <Toast message={toast.message} show={toast.show} />
     </div>
@@ -391,27 +553,41 @@ const App: React.FC = () => {
 const FeedCard = ({ feed, currentUser, refresh }: any) => {
   const [showComments, setShowComments] = useState(false);
   const [commentText, setCommentText] = useState('');
-  const likes = feed.likes || [];
-  const liked = likes.includes(currentUser.uid);
+  const likesObj = feed.likes || {};
+  const likesCount = Object.keys(likesObj).length;
+  const liked = !!likesObj[currentUser.uid];
 
   const toggleLike = async () => {
-    const ref = doc(db, 'feeds', feed.id);
-    await updateDoc(ref, { likes: liked ? arrayRemove(currentUser.uid) : arrayUnion(currentUser.uid) });
-    refresh();
+    try {
+      const feedRef = ref(rdb, `feeds/${feed.id}/likes/${currentUser.uid}`);
+      if (liked) {
+        await remove(feedRef);
+      } else {
+        await set(feedRef, true);
+      }
+      refresh();
+    } catch (e) {
+      console.error("좋아요 에러:", e);
+    }
   };
 
   const addComment = async () => {
     if (!commentText.trim()) return;
-    const ref = doc(db, 'feeds', feed.id);
-    await updateDoc(ref, { 
-      comments: arrayUnion({ 
+    try {
+      const commentRef = push(ref(rdb, `feeds/${feed.id}/comments`));
+      await set(commentRef, { 
         text: commentText, authorId: currentUser.uid, 
         authorName: currentUser.displayName || currentUser.email, 
-        createdAt: new Date().toISOString() 
-      }) 
-    });
-    setCommentText(''); refresh();
+        createdAt: serverTimestamp()
+      });
+      setCommentText(''); refresh();
+    } catch (e) {
+      console.error("댓글 에러:", e);
+    }
   };
+
+  const commentsObj = feed.comments || {};
+  const commentsList = Object.keys(commentsObj).map(k => ({ id: k, ...commentsObj[k] }));
 
   return (
     <div className="feed-card">
@@ -426,12 +602,12 @@ const FeedCard = ({ feed, currentUser, refresh }: any) => {
       )}
       <div className="fc-text">{feed.text}</div>
       <div className="fc-actions">
-        <button className={`fc-action-btn ${liked ? 'liked' : ''}`} onClick={toggleLike}>{liked ? '❤️' : '🤍'} {likes.length}</button>
-        <button className="fc-action-btn" onClick={() => setShowComments(!showComments)}>💬 댓글 {feed.comments?.length}</button>
+        <button className={`fc-action-btn ${liked ? 'liked' : ''}`} onClick={toggleLike}>{liked ? '❤️' : '🤍'} {likesCount}</button>
+        <button className="fc-action-btn" onClick={() => setShowComments(!showComments)}>💬 댓글 {commentsList.length}</button>
       </div>
       {showComments && (
         <div className="fc-comments">
-          {feed.comments?.map((c: any, i: number) => <div key={i} className="comment"><div className="comment-body"><b>{c.authorName}</b>: {c.text}</div></div>)}
+          {commentsList.map((c: any) => <div key={c.id} className="comment"><div className="comment-body"><b>{c.authorName}</b>: {c.text}</div></div>)}
           <div className="comment-input-row">
             <input className="comment-input" value={commentText} onChange={e => setCommentText(e.target.value)} />
             <button className="comment-send" onClick={addComment}>↑</button>
@@ -451,22 +627,31 @@ const MemoryCard = ({ memory }: any) => (
   </div>
 );
 
-const GoalCard = ({ goal, isMe, refresh }: any) => {
+const GoalCard = ({ goal, isMe, refresh, rdb }: any) => {
   const [newSub, setNewSub] = useState('');
   const subs = goal.subGoals || [];
   const pct = subs.length > 0 ? Math.round(subs.filter((s: any) => s.done).length / subs.length * 100) : 0;
 
   const toggleSub = async (idx: number) => {
-    const newSubs = [...subs];
-    newSubs[idx].done = !newSubs[idx].done;
-    await updateDoc(doc(db, 'goals', goal.id), { subGoals: newSubs });
-    refresh();
+    try {
+      const newSubs = [...subs];
+      newSubs[idx].done = !newSubs[idx].done;
+      await update(ref(rdb, `goals/${goal.id}`), { subGoals: newSubs });
+      refresh();
+    } catch (e) {
+      console.error("목표토글 에러:", e);
+    }
   };
 
   const addSub = async () => {
     if (!newSub) return;
-    await updateDoc(doc(db, 'goals', goal.id), { subGoals: arrayUnion({ text: newSub, done: false }) });
-    setNewSub(''); refresh();
+    try {
+      const newSubs = [...subs, { text: newSub, done: false }];
+      await update(ref(rdb, `goals/${goal.id}`), { subGoals: newSubs });
+      setNewSub(''); refresh();
+    } catch (e) {
+      console.error("세부목표추가 에러:", e);
+    }
   };
 
   return (
