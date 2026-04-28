@@ -1,0 +1,89 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model User {
+  id        Int      @id @default(autoincrement())
+  email     String   @unique
+  name      String
+  password  String
+  createdAt DateTime @default(now())
+  feeds     Feed[]
+  memories  Memory[]
+  goals     Goal[]
+  books     Book[]
+  comments  Comment[]
+  likes     Like[]
+}
+
+model Feed {
+  id         Int       @id @default(autoincrement())
+  text       String?
+  photos     String    // JSON string for array of URLs
+  tag        String
+  authorId   Int
+  author     User      @relation(fields: [authorId], references: [id])
+  createdAt  DateTime  @default(now())
+  comments   Comment[]
+  likes      Like[]
+}
+
+model Comment {
+  id        Int      @id @default(autoincrement())
+  text      String
+  feedId    Int
+  feed      Feed     @relation(fields: [feedId], references: [id])
+  authorId  Int
+  author    User     @relation(fields: [authorId], references: [id])
+  createdAt DateTime @default(now())
+}
+
+model Like {
+  userId Int
+  feedId Int
+  user   User @relation(fields: [userId], references: [id])
+  feed   Feed @relation(fields: [feedId], references: [id])
+
+  @@id([userId, feedId])
+}
+
+model Memory {
+  id         Int      @id @default(autoincrement())
+  text       String?
+  photoUrl   String?
+  toName     String
+  type       String
+  authorId   Int
+  author     User     @relation(fields: [authorId], references: [id])
+  createdAt  DateTime @default(now())
+}
+
+model Goal {
+  id        Int       @id @default(autoincrement())
+  title     String
+  authorId  Int
+  author    User      @relation(fields: [authorId], references: [id])
+  createdAt DateTime  @default(now())
+  subGoals  SubGoal[]
+}
+
+model SubGoal {
+  id     Int     @id @default(autoincrement())
+  text   String
+  done   Boolean @default(false)
+  goalId Int
+  goal   Goal    @relation(fields: [goalId], references: [id])
+}
+
+model Book {
+  id        Int      @id @default(autoincrement())
+  text      String
+  status    String
+  authorId  Int
+  author    User     @relation(fields: [authorId], references: [id])
+  createdAt DateTime @default(now())
+}

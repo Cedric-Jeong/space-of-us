@@ -1,0 +1,51 @@
+[debug] [2026-04-28T08:26:09.232Z] ----------------------------------------------------------------------
+[debug] [2026-04-28T08:26:09.241Z] Command:       C:\Program Files\nodejs\node.exe C:\Users\jjy06\AppData\Roaming\npm\node_modules\firebase-tools\lib\bin\firebase.js init
+[debug] [2026-04-28T08:26:09.242Z] CLI Version:   15.15.0
+[debug] [2026-04-28T08:26:09.242Z] Platform:      win32
+[debug] [2026-04-28T08:26:09.242Z] Node Version:  v22.20.0
+[debug] [2026-04-28T08:26:09.243Z] Time:          Tue Apr 28 2026 17:26:09 GMT+0900 (대한민국 표준시)
+[debug] [2026-04-28T08:26:09.244Z] ----------------------------------------------------------------------
+[debug] 
+[info] 
+     ######## #### ########  ######## ########     ###     ######  ########
+     ##        ##  ##     ## ##       ##     ##  ##   ##  ##       ##
+     ######    ##  ########  ######   ########  #########  ######  ######
+     ##        ##  ##    ##  ##       ##     ## ##     ##       ## ##
+     ##       #### ##     ## ######## ########  ##     ##  ######  ########
+
+You're about to initialize a Firebase project in this directory:
+
+  C:\Users\jjy06\Desktop\WebSite
+
+[debug] [2026-04-28T08:26:53.447Z] ----------------------------------------------------------------------
+[debug] [2026-04-28T08:26:53.450Z] Command:       C:\Program Files\nodejs\node.exe C:\Users\jjy06\AppData\Roaming\npm\node_modules\firebase-tools\lib\bin\firebase.js init
+[debug] [2026-04-28T08:26:53.450Z] CLI Version:   15.15.0
+[debug] [2026-04-28T08:26:53.451Z] Platform:      win32
+[debug] [2026-04-28T08:26:53.451Z] Node Version:  v22.20.0
+[debug] [2026-04-28T08:26:53.451Z] Time:          Tue Apr 28 2026 17:26:53 GMT+0900 (대한민국 표준시)
+[debug] [2026-04-28T08:26:53.451Z] ----------------------------------------------------------------------
+[debug] 
+[info] 
+     ######## #### ########  ######## ########     ###     ######  ########
+     ##        ##  ##     ## ##       ##     ##  ##   ##  ##       ##
+     ######    ##  ########  ######   ########  #########  ######  ######
+     ##        ##  ##    ##  ##       ##     ## ##     ##       ## ##
+     ##       #### ##     ## ######## ########  ##     ##  ######  ########
+
+You're about to initialize a Firebase project in this directory:
+
+  C:\Users\jjy06\Desktop\WebSite
+
+[debug] [2026-04-28T08:28:03.847Z] ExitPromptError: User force closed the prompt with SIGINT
+    at Interface.sigint (C:\Users\jjy06\AppData\Roaming\npm\node_modules\firebase-tools\node_modules\@inquirer\core\dist\commonjs\lib\create-prompt.js:101:37)
+    at Interface.emit (node:events:519:28)
+    at [_ttyWrite] [as _ttyWrite] (node:internal/readline/interface:1128:18)
+    at ReadStream.onkeypress (node:internal/readline/interface:271:20)
+    at ReadStream.emit (node:events:531:35)
+    at emitKeys (node:internal/readline/utils:370:14)
+    at emitKeys.next (<anonymous>)
+    at ReadStream.onData (node:internal/readline/emitKeypressEvents:64:36)
+    at ReadStream.emit (node:events:519:28)
+    at addChunk (node:internal/streams/readable:561:12)
+[error] 
+[error] Error: An unexpected error has occurred.
