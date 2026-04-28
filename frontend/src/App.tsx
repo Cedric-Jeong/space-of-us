@@ -1,17 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { 
   onAuthStateChanged, 
-  signInWithEmailAndPassword, 
   signOut, 
-  updateProfile,
   GoogleAuthProvider, 
   signInWithPopup,
   signInWithRedirect,
-  getRedirectResult,
-  sendSignInLinkToEmail,
-  isSignInWithEmailLink,
-  signInWithEmailLink,
-  updatePassword
+  getRedirectResult
 } from 'firebase/auth';
 import { 
   ref, 
@@ -36,19 +30,7 @@ const App: React.FC = () => {
   const [user, setUser] = useState<any>(null);
   const [activeTab, setActiveTab] = useState('feed');
   const [toast, setToast] = useState({ show: false, message: '' });
-  const [isLoginView, setIsLoginView] = useState(true);
-
-  // Auth Inputs
-  const [authEmail, setAuthEmail] = useState('');
-  const [authId, setAuthId] = useState('');
-  const [authPw, setAuthPw] = useState('');
-  const [authName, setAuthName] = useState('');
   const [authErr, setAuthErr] = useState('');
-  const [isIdChecked, setIsIdChecked] = useState(false);
-  const [isEmailSent, setIsEmailSent] = useState(false);
-  const [verifiedEmail, setVerifiedEmail] = useState('');
-
-  const [showAuthModal, setShowAuthModal] = useState(false);
 
   // App Data
   const [feeds, setFeeds] = useState<any[]>([]);
@@ -58,57 +40,17 @@ const App: React.FC = () => {
   const [allUsers, setAllUsers] = useState<any[]>([]); 
 
   useEffect(() => {
-    // 1. Firebase auth 객체가 있는지 확인
-    if (!auth) {
-      console.log("Firebase Auth가 아직 준비되지 않았습니다.");
-      return;
-    }
-
-    // 2. 이메일 링크 인증 확인 로직을 안전하게 실행
-    const handleEmailLinkAuth = async () => {
-      try {
-        if (isSignInWithEmailLink(auth, window.location.href)) {
-          console.log("이메일 인증 링크 감지됨!");
-          let email = window.localStorage.getItem('emailForSignIn');
-          
-          if (!email) {
-            // localStorage에 없으면 사용자에게 다시 물어봄
-            email = window.prompt('인증을 완료하려면 이메일을 다시 입력해주세요.');
-          }
-
-          if (email) {
-            setVerifiedEmail(email);
-            setAuthEmail(email);
-            setIsLoginView(false); 
-            setShowAuthModal(true);
-            showToast('✅ 이메일 인증 성공! 나머지 정보를 입력해주세요.');
-            // 사용한 이메일은 삭제 (보안)
-            window.localStorage.removeItem('emailForSignIn');
-          } else {
-            setAuthErr('이메일 정보가 없어 인증을 완료할 수 없습니다.');
-          }
-        }
-      } catch (err: any) {
-        console.error("인증 처리 중 상세 에러:", err);
-        setAuthErr('인증 처리 중 에러가 발생했습니다: ' + err.message);
-      }
-    };
-
-    handleEmailLinkAuth();
+    if (!auth) return;
 
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       if (currentUser) {
         const MASTER_ADMIN_EMAIL = 'jjy060503jjy@gmail.com'; 
-
         try {
           const userSnap = await get(child(ref(rdb), `users/${currentUser.uid}`));
           let role = 'member';
-          let username = '';
           
           if (userSnap.exists()) {
-            const userData = userSnap.val();
-            role = userData.role || 'member';
-            username = userData.username || '';
+            role = userSnap.val().role || 'member';
           } else {
             role = (currentUser.email === MASTER_ADMIN_EMAIL) ? 'admin' : 'member'; 
             await set(ref(rdb, `users/${currentUser.uid}`), {
@@ -123,10 +65,8 @@ const App: React.FC = () => {
             uid: currentUser.uid,
             email: currentUser.email,
             displayName: currentUser.displayName,
-            role: role,
-            username: username
+            role: role
           });
-          setShowAuthModal(false);
         } catch (error) {
           console.error("사용자 정보 로드 중 에러:", error);
           setUser({
@@ -143,17 +83,17 @@ const App: React.FC = () => {
 
     getRedirectResult(auth).catch((err) => {
       console.error("리디렉션 에러:", err);
-      if (err.code === 'auth/unauthorized-domain') {
-        setAuthErr('허용되지 않은 도메인입니다.');
-      }
+      if (err.code === 'auth/unauthorized-domain') setAuthErr('허용되지 않은 도메인입니다.');
     });
 
     return () => unsubscribe();
   }, []);
 
   useEffect(() => {
-    loadAll();
-    if (user && user.role === 'admin') fetchAllUsers();
+    if (user) {
+      loadAll();
+      if (user.role === 'admin') fetchAllUsers();
+    }
   }, [user, activeTab]);
 
   const loadAll = () => {
@@ -166,125 +106,6 @@ const App: React.FC = () => {
   const showToast = (msg: string) => {
     setToast({ show: true, message: msg });
     setTimeout(() => setToast({ show: false, message: '' }), 2200);
-  };
-
-  const checkIdDuplication = async () => {
-    if (!authId || authId.length < 3) return setAuthErr('아이디는 3자 이상이어야 합니다.');
-    try {
-      const snap = await get(ref(rdb, `usernames/${authId}`));
-      if (snap.exists()) {
-        setAuthErr('이미 사용 중인 아이디입니다.');
-        setIsIdChecked(false);
-      } else {
-        showToast('✅ 사용 가능한 아이디입니다!');
-        setIsIdChecked(true);
-        setAuthErr('');
-      }
-    } catch (e) {
-      setAuthErr('중복 확인 중 에러가 발생했습니다.');
-    }
-  };
-
-  const handleLogin = async () => {
-    try {
-      setAuthErr('');
-      if (!authId) return setAuthErr('아이디를 입력해주세요.');
-      
-      const idSnap = await get(ref(rdb, `usernames/${authId}`));
-      if (!idSnap.exists()) {
-        return setAuthErr('존재하지 않는 아이디입니다.');
-      }
-      const email = idSnap.val();
-      const cred = await signInWithEmailAndPassword(auth, email, authPw);
-      
-      if (!cred.user.emailVerified) {
-        showToast('📧 이메일 인증이 필요합니다!');
-      }
-    } catch (err: any) {
-      setAuthErr('로그인 실패: 아이디나 비밀번호를 확인하세요.');
-    }
-  };
-
-  const [isEmailChecked, setIsEmailChecked] = useState(false);
-
-  const checkEmailDuplication = async () => {
-    if (!authEmail) return setAuthErr('이메일을 입력해주세요.');
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(authEmail)) return setAuthErr('유효한 이메일 형식이 아닙니다.');
-    
-    try {
-      const usersSnap = await get(ref(rdb, 'users'));
-      let emailExists = false;
-      if (usersSnap.exists()) {
-        const users = usersSnap.val();
-        emailExists = Object.values(users).some((u: any) => u.email === authEmail);
-      }
-
-      if (emailExists) {
-        setAuthErr('이미 가입된 이메일입니다.');
-        setIsEmailChecked(false);
-      } else {
-        showToast('✅ 가입 가능한 이메일입니다!');
-        setIsEmailChecked(true);
-        setAuthErr('');
-      }
-    } catch (e) {
-      console.error("이메일 중복 확인 중 에러:", e);
-      setAuthErr('중복 확인 중 에러가 발생했습니다.');
-    }
-  };
-
-  const sendVerificationEmail = async () => {
-    if (!authEmail) return setAuthErr('이메일을 입력해주세요.');
-    if (!isEmailChecked) return setAuthErr('이메일 중복 확인을 먼저 해주세요.');
-
-    try {
-      const actionCodeSettings = {
-        url: window.location.origin, // 인증 후 돌아올 주소
-        handleCodeInApp: true,
-      };
-      await sendSignInLinkToEmail(auth, authEmail, actionCodeSettings);
-      window.localStorage.setItem('emailForSignIn', authEmail);
-      setIsEmailSent(true);
-      showToast('💌 인증 메일을 보냈습니다! 메일함을 확인해주세요.');
-    } catch (err: any) {
-      setAuthErr('메일 발송 실패: ' + err.message);
-    }
-  };
-
-  const handleSignup = async () => {
-    try {
-      setAuthErr('');
-      if (!verifiedEmail) return setAuthErr('이메일 인증을 먼저 완료해주세요.');
-      if (!isIdChecked) return setAuthErr('아이디 중복 확인을 해주세요.');
-      if (!authName) return setAuthErr('닉네임을 입력해주세요.');
-      if (authPw.length < 6) return setAuthErr('비밀번호는 6자 이상이어야 합니다.');
-      
-      // 1. 이메일 링크로 로그인 처리 (계정 생성/인증 동시 진행)
-      const result = await signInWithEmailLink(auth, verifiedEmail, window.location.href);
-      
-      // 2. 비밀번호 설정 (처음 가입 시 비밀번호가 없으므로 설정해줌)
-      await updatePassword(result.user, authPw);
-      
-      // 3. 프로필 업데이트
-      await updateProfile(result.user, { displayName: authName });
-      
-      // 4. 데이터베이스 저장
-      await set(ref(rdb, `usernames/${authId}`), verifiedEmail);
-      await set(ref(rdb, `users/${result.user.uid}`), {
-        username: authId,
-        name: authName,
-        email: verifiedEmail,
-        role: 'guest', // 역할을 guest로 변경
-        createdAt: serverTimestamp()
-      });
-      
-      showToast('🎉 가입이 완료되었습니다!');
-      window.localStorage.removeItem('emailForSignIn');
-    } catch (err: any) {
-      console.error("가입 완료 상세 에러:", err);
-      setAuthErr('가입 완료 실패: ' + err.message);
-    }
   };
 
   const handleLogout = () => signOut(auth);
@@ -315,20 +136,15 @@ const App: React.FC = () => {
 
   const fetchFeeds = async () => {
     try {
-      console.log("피드 가져오는 중...");
       const snap = await get(ref(rdb, 'feeds'));
       if (snap.exists()) {
         const data = snap.val();
-        console.log("데이터 확인:", data);
         const list = Object.keys(data).map(key => ({ id: key, ...data[key] }));
         setFeeds(list.sort((a, b) => (Number(b.createdAt) || 0) - (Number(a.createdAt) || 0)));
       } else {
-        console.log("데이터가 없습니다.");
         setFeeds([]);
       }
-    } catch (error) {
-      console.error("피드 로드 실패:", error);
-    }
+    } catch (error) { console.error("피드 로드 실패:", error); }
   };
 
   const fetchMemories = async () => {
@@ -341,9 +157,7 @@ const App: React.FC = () => {
       } else {
         setMemories([]);
       }
-    } catch (error) {
-      console.error("메시지 로드 실패:", error);
-    }
+    } catch (error) { console.error("메시지 로드 실패:", error); }
   };
 
   const fetchGoals = async () => {
@@ -356,9 +170,7 @@ const App: React.FC = () => {
       } else {
         setGoals([]);
       }
-    } catch (error) {
-      console.error("목표 로드 실패:", error);
-    }
+    } catch (error) { console.error("목표 로드 실패:", error); }
   };
 
   const fetchBooks = async () => {
@@ -371,13 +183,10 @@ const App: React.FC = () => {
       } else {
         setBooks([]);
       }
-    } catch (error) {
-      console.error("독서기록 로드 실패:", error);
-    }
+    } catch (error) { console.error("독서기록 로드 실패:", error); }
   };
 
   const deleteData = async (path: string) => {
-    if (!user) return setShowAuthModal(true);
     if (!window.confirm('정말 삭제할까요?')) return;
     try {
       await remove(ref(rdb, path));
@@ -396,9 +205,7 @@ const App: React.FC = () => {
         const data = snap.val();
         setAllUsers(Object.keys(data).map(key => ({ id: key, ...data[key] })));
       }
-    } catch (error) {
-      console.error("사용자 목록 로드 실패:", error);
-    }
+    } catch (error) { console.error("사용자 목록 로드 실패:", error); }
   };
 
   const changeUserRole = async (userId: string, newRole: string) => {
@@ -406,9 +213,7 @@ const App: React.FC = () => {
       await update(ref(rdb, `users/${userId}`), { role: newRole });
       showToast('역할이 변경되었습니다.');
       fetchAllUsers();
-    } catch (e) {
-      showToast('권한 변경 실패');
-    }
+    } catch (e) { showToast('권한 변경 실패'); }
   };
 
   // --- Panels ---
@@ -443,7 +248,6 @@ const App: React.FC = () => {
     const [isPosting, setIsPosting] = useState(false);
 
     const postFeed = async () => {
-      if (!user) return setShowAuthModal(true);
       if (!text && photos.length === 0) return showToast('내용을 입력해주세요');
       setIsPosting(true);
       try {
@@ -475,28 +279,21 @@ const App: React.FC = () => {
         <div className="kw-banner">
           <div><div className="kw-label">이달의 키워드</div><div className="kw-words"><span className="kw-word">성장</span><span className="kw-vs">×</span><span className="kw-word">여유</span></div></div>
         </div>
-        {user ? (
-          <div className="write-box">
-            <textarea placeholder="오늘 어떤 하루였어? ✍️" value={text} onChange={e => setText(e.target.value)} />
-            <div className="photo-row">
-              {photos.map((p, i) => <img key={i} className="photo-preview" src={URL.createObjectURL(p)} alt="p" />)}
-              <label htmlFor="photo-input" className="photo-add">+</label>
-            </div>
-            <input type="file" id="photo-input" multiple onChange={e => setPhotos(Array.from(e.target.files || []).slice(0, 3))} />
-            <div className="write-footer">
-              {['daily', 'thought', 'photo'].map(t => <button key={t} className={`tag-chip ${tag === t ? 'sel' : ''}`} onClick={() => setTag(t)}>{t==='daily'?'일상':t==='thought'?'생각':'사진'}</button>)}
-              <button className="post-btn" onClick={postFeed} disabled={isPosting}>{isPosting ? '올리는 중...' : '올리기'}</button>
-            </div>
+        <div className="write-box">
+          <textarea placeholder="오늘 어떤 하루였어? ✍️" value={text} onChange={e => setText(e.target.value)} />
+          <div className="photo-row">
+            {photos.map((p, i) => <img key={i} className="photo-preview" src={URL.createObjectURL(p)} alt="p" />)}
+            <label htmlFor="photo-input" className="photo-add">+</label>
           </div>
-        ) : (
-          <div className="write-box" style={{ textAlign: 'center', padding: '20px' }}>
-            <p style={{ color: 'var(--ink3)', marginBottom: '12px' }}>로그인하고 소중한 일상을 기록해보세요! ✨</p>
-            <button className="btn-primary" style={{ width: 'auto', padding: '8px 20px' }} onClick={() => setShowAuthModal(true)}>로그인 / 회원가입</button>
+          <input type="file" id="photo-input" multiple onChange={e => setPhotos(Array.from(e.target.files || []).slice(0, 3))} />
+          <div className="write-footer">
+            {['daily', 'thought', 'photo'].map(t => <button key={t} className={`tag-chip ${tag === t ? 'sel' : ''}`} onClick={() => setTag(t)}>{t==='daily'?'일상':t==='thought'?'생각':'사진'}</button>)}
+            <button className="post-btn" onClick={postFeed} disabled={isPosting}>{isPosting ? '올리는 중...' : '올리기'}</button>
           </div>
-        )}
+        </div>
         <div className="section-label">최근 기록</div>
         <div id="feed-list">
-          {feeds.length === 0 ? <div className="empty">기록이 없어요.</div> : feeds.map(f => <FeedCard key={f.id} feed={f} currentUser={user} refresh={fetchFeeds} onDelete={deleteData} onAuthRequired={() => setShowAuthModal(true)} />)}
+          {feeds.length === 0 ? <div className="empty">기록이 없어요.</div> : feeds.map(f => <FeedCard key={f.id} feed={f} currentUser={user} refresh={fetchFeeds} onDelete={deleteData} />)}
         </div>
       </div>
     );
@@ -510,7 +307,6 @@ const App: React.FC = () => {
     const [isPosting, setIsPosting] = useState(false);
 
     const postMemory = async () => {
-      if (!user) return setShowAuthModal(true);
       if (!text && !photo) return showToast('내용을 입력해주세요');
       setIsPosting(true);
       try {
@@ -538,28 +334,21 @@ const App: React.FC = () => {
 
     return (
       <div className={`tab-panel ${activeTab === 'memory' ? 'active' : ''}`}>
-        {user ? (
-          <div className="write-box">
-            <div className="type-select">
-              {['msg', 'memory', 'advice', 'cheer'].map(t => <button key={t} className={`type-btn ${type === t ? 'sel' : ''}`} onClick={() => setType(t)}>{t==='msg'?'💬 말':'📸 추억'}</button>)}
-            </div>
-            <textarea placeholder="남기고 싶은 말..." style={{ minHeight: '90px' }} value={text} onChange={e => setText(e.target.value)} />
-            <div className="photo-row">
-              {photo && <img className="photo-preview" src={URL.createObjectURL(photo)} alt="p" />}
-              <label htmlFor="mem-photo-input" className="photo-add">+</label>
-            </div>
-            <input type="file" id="mem-photo-input" onChange={e => setPhoto(e.target.files?.[0] || null)} />
-            <div className="write-footer">
-              <input className="tag-chip" placeholder="To. 닉네임" value={toName} onChange={e => setToName(e.target.value)} />
-              <button className="post-btn" onClick={postMemory} disabled={isPosting}>남기기</button>
-            </div>
+        <div className="write-box">
+          <div className="type-select">
+            {['msg', 'memory', 'advice', 'cheer'].map(t => <button key={t} className={`type-btn ${type === t ? 'sel' : ''}`} onClick={() => setType(t)}>{t==='msg'?'💬 말':'📸 추억'}</button>)}
           </div>
-        ) : (
-          <div className="write-box" style={{ textAlign: 'center', padding: '20px' }}>
-            <p style={{ color: 'var(--ink3)', marginBottom: '12px' }}>로그인하고 친구들에게 메시지를 남겨보세요! 💌</p>
-            <button className="btn-primary" style={{ width: 'auto', padding: '8px 20px' }} onClick={() => setShowAuthModal(true)}>로그인 / 회원가입</button>
+          <textarea placeholder="남기고 싶은 말..." style={{ minHeight: '90px' }} value={text} onChange={e => setText(e.target.value)} />
+          <div className="photo-row">
+            {photo && <img className="photo-preview" src={URL.createObjectURL(photo)} alt="p" />}
+            <label htmlFor="mem-photo-input" className="photo-add">+</label>
           </div>
-        )}
+          <input type="file" id="mem-photo-input" onChange={e => setPhoto(e.target.files?.[0] || null)} />
+          <div className="write-footer">
+            <input className="tag-chip" placeholder="To. 닉네임" value={toName} onChange={e => setToName(e.target.value)} />
+            <button className="post-btn" onClick={postMemory} disabled={isPosting}>남기기</button>
+          </div>
+        </div>
         <div id="memory-list">{memories.map(m => <MemoryCard key={m.id} memory={m} currentUser={user} onDelete={deleteData} />)}</div>
       </div>
     );
@@ -571,7 +360,6 @@ const App: React.FC = () => {
     const [subGoal, setSubGoal] = useState('');
 
     const addGoal = async () => {
-      if (!user) return setShowAuthModal(true);
       if (!title) return showToast('목표를 입력하세요');
       try {
         const newGoalRef = push(ref(rdb, 'goals'));
@@ -582,23 +370,20 @@ const App: React.FC = () => {
         });
         setTitle(''); setSubGoal(''); setShowForm(false); fetchGoals();
         showToast('🎯 목표 추가!');
-      } catch (e) {
-        console.error("목표 저장 에러:", e);
-        showToast('저장 실패');
-      }
+      } catch (e) { console.error("목표 저장 에러:", e); showToast('저장 실패'); }
     };
 
     return (
       <div className={`tab-panel ${activeTab === 'goals' ? 'active' : ''}`}>
-        <button className="post-btn" style={{ width: '100%', marginBottom: '16px' }} onClick={() => user ? setShowForm(!showForm) : setShowAuthModal(true)}>+ 목표 추가</button>
-        {showForm && user && (
+        <button className="post-btn" style={{ width: '100%', marginBottom: '16px' }} onClick={() => setShowForm(!showForm)}>+ 목표 추가</button>
+        {showForm && (
           <div className="add-goal-form">
             <input className="add-goal-inp" placeholder="목표 이름" value={title} onChange={e => setTitle(e.target.value)} />
             <input className="add-goal-inp" placeholder="첫 세부 목표" value={subGoal} onChange={e => setSubGoal(e.target.value)} />
             <button className="btn-save" onClick={addGoal}>저장</button>
           </div>
         )}
-        {goals.map(g => <GoalCard key={g.id} goal={g} isMe={user && g.authorId === user.uid} refresh={fetchGoals} rdb={rdb} currentUser={user} onDelete={deleteData} onAuthRequired={() => setShowAuthModal(true)} />)}
+        {goals.map(g => <GoalCard key={g.id} goal={g} isMe={g.authorId === user.uid} refresh={fetchGoals} rdb={rdb} currentUser={user} onDelete={deleteData} />)}
       </div>
     );
   };
@@ -608,7 +393,6 @@ const App: React.FC = () => {
     const [status, setStatus] = useState('done');
 
     const postBook = async () => {
-      if (!user) return setShowAuthModal(true);
       if (!text) return showToast('내용 입력');
       try {
         const newBookRef = push(ref(rdb, 'books'));
@@ -618,10 +402,7 @@ const App: React.FC = () => {
         });
         setText(''); fetchBooks();
         showToast('📚 책장에 추가!');
-      } catch (e) {
-        console.error("독서기록 저장 에러:", e);
-        showToast('저장 실패');
-      }
+      } catch (e) { console.error("독서기록 저장 에러:", e); showToast('저장 실패'); }
     };
 
     return (
@@ -637,7 +418,7 @@ const App: React.FC = () => {
           {books.map(b => (
             <div key={b.id} className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div><b>{b.authorName}</b>: {b.text} ({b.status})</div>
-              {user && (user.role === 'admin' || b.authorId === user.uid) && (
+              {(user.role === 'admin' || b.authorId === user.uid) && (
                 <button className="del-btn-small" onClick={() => deleteData(`books/${b.id}`)}>삭제</button>
               )}
             </div>
@@ -647,63 +428,58 @@ const App: React.FC = () => {
     );
   };
 
-  const AuthModal = () => (
-    <div id="auth-screen" style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', zIndex: 1000, background: 'rgba(255,255,255,0.95)', overflowY: 'auto', padding: '40px 20px', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
-      <button onClick={() => setShowAuthModal(false)} style={{ position: 'absolute', top: '20px', right: '20px', background: 'none', border: 'none', fontSize: '24px', cursor: 'pointer' }}>✕</button>
-      
-      <div className="auth-logo" style={{ marginBottom: '10px' }}>우리의 공간 ✦</div>
-      <div className="auth-sub" style={{ marginBottom: '30px' }}>친구와 함께하는 소중한 기록</div>
+  if (!user) {
+    return (
+      <div id="auth-screen" style={{ height: '100vh', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', background: 'var(--bg)', padding: '20px' }}>
+        <div className="auth-logo" style={{ marginBottom: '10px', fontSize: '28px' }}>우리의 공간 ✦</div>
+        <div className="auth-sub" style={{ marginBottom: '40px', fontSize: '16px' }}>친구와 함께하는 소중한 기록</div>
 
-      <div className="auth-card" style={{ maxWidth: '400px', width: '100%', textAlign: 'center', padding: '30px' }}>
-        <div style={{ marginBottom: '30px', lineHeight: '1.8', color: 'var(--ink2)', fontSize: '15px', wordBreak: 'keep-all' }}>
-          <p>🌿 <b>소소한 일상부터 깊은 생각까지</b></p>
-          <p>이곳은 우리만의 이야기를 차곡차곡 쌓아가는 공간입니다.</p>
-          <br />
-          <p>🎯 함께 목표를 세우고 달성하며,</p>
-          <p>📚 읽은 책의 감동을 나누고,</p>
-          <p>💌 서로에게 따뜻한 응원의 한마디를 남겨보세요.</p>
-          <br />
-          <p style={{ color: 'var(--brand)', fontWeight: '600' }}>지금 바로 시작해보세요! ✨</p>
+        <div className="auth-card" style={{ maxWidth: '440px', width: '100%', textAlign: 'center', padding: '40px', background: 'white', borderRadius: '24px', boxShadow: '0 10px 30px rgba(0,0,0,0.05)' }}>
+          <div style={{ marginBottom: '40px', lineHeight: '2', color: 'var(--ink2)', fontSize: '15px', wordBreak: 'keep-all' }}>
+            <p style={{ fontSize: '18px', marginBottom: '20px' }}>🌿 <b>반가워요!</b></p>
+            <p>소소한 일상부터 깊은 생각까지,</p>
+            <p>우리만의 이야기를 차곡차곡 쌓아가는 공간입니다.</p>
+            <div style={{ margin: '25px 0', width: '30px', height: '1px', background: 'var(--border)', display: 'inline-block' }}></div>
+            <p>🎯 함께 목표를 세우고 달성하며,</p>
+            <p>📚 읽은 책의 감동을 나누고,</p>
+            <p>💌 따뜻한 응원을 주고받아 보세요.</p>
+            <br />
+            <p style={{ color: 'var(--brand)', fontWeight: '600', marginTop: '10px' }}>로그인 후 우리만의 공간을 확인해보세요! ✨</p>
+          </div>
+
+          <button 
+            className="btn-primary" 
+            style={{ 
+              background: 'white', 
+              color: 'var(--ink)', 
+              border: '1px solid var(--border)', 
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'center', 
+              gap: '12px',
+              padding: '14px 0',
+              fontSize: '16px',
+              borderRadius: '16px',
+              width: '100%'
+            }}
+            onClick={handleGoogleLogin}
+          >
+            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="G" style={{ width: '22px' }} />
+            구글 계정으로 시작하기
+          </button>
+          {authErr && <div className="auth-err" style={{ marginTop: '20px', color: '#ff4d4f' }}>{authErr}</div>}
         </div>
-
-        <button 
-          className="btn-primary" 
-          style={{ 
-            background: 'white', 
-            color: 'var(--ink)', 
-            border: '0.5px solid var(--border)', 
-            display: 'flex', 
-            alignItems: 'center', 
-            justifyContent: 'center', 
-            gap: '12px',
-            padding: '12px 0',
-            fontSize: '15px',
-            boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
-          }}
-          onClick={handleGoogleLogin}
-        >
-          <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="G" style={{ width: '20px' }} />
-          구글 계정으로 간편하게 시작하기
-        </button>
-        
-        {authErr && <div className="auth-err" style={{ marginTop: '15px' }}>{authErr}</div>}
       </div>
-    </div>
-  );
+    );
+  }
 
   return (
     <div id="app">
       <div className="app-header">
         <div className="app-title">우리의 공간 ✦</div>
         <div className="header-user">
-          {user ? (
-            <>
-              <div className="user-av">{(user.displayName || user.email || '?')[0].toUpperCase()}</div>
-              <button className="logout-btn" onClick={handleLogout}>로그아웃</button>
-            </>
-          ) : (
-            <button className="logout-btn" style={{ background: 'var(--brand)', color: 'white', border: 'none' }} onClick={() => setShowAuthModal(true)}>로그인</button>
-          )}
+          <div className="user-av">{(user.displayName || user.email || '?')[0].toUpperCase()}</div>
+          <button className="logout-btn" onClick={handleLogout}>로그아웃</button>
         </div>
       </div>
       <div className="tab-bar">
@@ -712,10 +488,8 @@ const App: React.FC = () => {
             {t === 'feed' ? '🌿피드' : t === 'memory' ? '💌메시지' : t === 'goals' ? '🎯목표' : '📚독서'}
           </button>
         ))}
-        {user && user.role === 'admin' && (
-          <button className={`tb ${activeTab === 'admin' ? 'active' : ''}`} onClick={() => setActiveTab('admin')}>
-            ⚙️관리
-          </button>
+        {user.role === 'admin' && (
+          <button className={`tb ${activeTab === 'admin' ? 'active' : ''}`} onClick={() => setActiveTab('admin')}>⚙️관리</button>
         )}
       </div>
       <div className="content-area">
@@ -723,9 +497,8 @@ const App: React.FC = () => {
         {activeTab === 'memory' && <MemoryPanel />}
         {activeTab === 'goals' && <GoalPanel />}
         {activeTab === 'books' && <BookPanel />}
-        {activeTab === 'admin' && user && user.role === 'admin' && <AdminPanel />}
+        {activeTab === 'admin' && user.role === 'admin' && <AdminPanel />}
       </div>
-      {/* showAuthModal 제거됨 */}
       <Toast message={toast.message} show={toast.show} />
     </div>
   );
@@ -733,30 +506,22 @@ const App: React.FC = () => {
 
 // --- Helper Components ---
 
-const FeedCard = ({ feed, currentUser, refresh, onDelete, onAuthRequired }: any) => {
+const FeedCard = ({ feed, currentUser, refresh, onDelete }: any) => {
   const [showComments, setShowComments] = useState(false);
   const [commentText, setCommentText] = useState('');
   const likesObj = feed.likes || {};
   const likesCount = Object.keys(likesObj).length;
-  const liked = currentUser ? !!likesObj[currentUser.uid] : false;
+  const liked = !!likesObj[currentUser.uid];
 
   const toggleLike = async () => {
-    if (!currentUser) return onAuthRequired();
     try {
       const feedRef = ref(rdb, `feeds/${feed.id}/likes/${currentUser.uid}`);
-      if (liked) {
-        await remove(feedRef);
-      } else {
-        await set(feedRef, true);
-      }
+      liked ? await remove(feedRef) : await set(feedRef, true);
       refresh();
-    } catch (e) {
-      console.error("좋아요 에러:", e);
-    }
+    } catch (e) { console.error("좋아요 에러:", e); }
   };
 
   const addComment = async () => {
-    if (!currentUser) return onAuthRequired();
     if (!commentText.trim()) return;
     try {
       const commentRef = push(ref(rdb, `feeds/${feed.id}/comments`));
@@ -766,29 +531,24 @@ const FeedCard = ({ feed, currentUser, refresh, onDelete, onAuthRequired }: any)
         createdAt: serverTimestamp()
       });
       setCommentText(''); refresh();
-    } catch (e) {
-      console.error("댓글 에러:", e);
-    }
+    } catch (e) { console.error("댓글 에러:", e); }
   };
 
-  const commentsObj = feed.comments || {};
-  const commentsList = Object.keys(commentsObj).map(k => ({ id: k, ...commentsObj[k] }));
+  const commentsList = Object.keys(feed.comments || {}).map(k => ({ id: k, ...feed.comments[k] }));
 
   return (
     <div className="feed-card">
       <div className="fc-header">
         <div style={{ display: 'flex', alignItems: 'center', flex: 1 }}>
-          <div className={`av ${currentUser && feed.authorId === currentUser.uid ? 'av-me' : 'av-other'}`}>{feed.authorName?.[0]}</div>
+          <div className={`av ${feed.authorId === currentUser.uid ? 'av-me' : 'av-other'}`}>{feed.authorName?.[0]}</div>
           <span className="fc-name">{feed.authorName}</span>
         </div>
-        {currentUser && (currentUser.role === 'admin' || feed.authorId === currentUser.uid) && (
+        {(currentUser.role === 'admin' || feed.authorId === currentUser.uid) && (
           <button className="del-btn-small" onClick={() => onDelete(`feeds/${feed.id}`)}>삭제</button>
         )}
       </div>
       {feed.photos?.length > 0 && (
-        <div className="fc-photos one">
-          {feed.photos.map((u: string, i: number) => <img key={i} src={u} alt="f" />)}
-        </div>
+        <div className="fc-photos one">{feed.photos.map((u: string, i: number) => <img key={i} src={u} alt="f" />)}</div>
       )}
       <div className="fc-text">{feed.text}</div>
       <div className="fc-actions">
@@ -812,7 +572,7 @@ const MemoryCard = ({ memory, currentUser, onDelete }: any) => (
   <div className="memory-card">
     <div className="mc-header">
       <div style={{ flex: 1 }}><b>{memory.authorName}</b> → {memory.toName}</div>
-      {currentUser && (currentUser.role === 'admin' || memory.authorId === currentUser.uid) && (
+      {(currentUser.role === 'admin' || memory.authorId === currentUser.uid) && (
         <button className="del-btn-small" onClick={() => onDelete(`memories/${memory.id}`)}>삭제</button>
       )}
     </div>
@@ -822,33 +582,27 @@ const MemoryCard = ({ memory, currentUser, onDelete }: any) => (
   </div>
 );
 
-const GoalCard = ({ goal, isMe, refresh, rdb, currentUser, onDelete, onAuthRequired }: any) => {
+const GoalCard = ({ goal, isMe, refresh, rdb, currentUser, onDelete }: any) => {
   const [newSub, setNewSub] = useState('');
   const subs = goal.subGoals || [];
   const pct = subs.length > 0 ? Math.round(subs.filter((s: any) => s.done).length / subs.length * 100) : 0;
 
   const toggleSub = async (idx: number) => {
-    if (!currentUser) return onAuthRequired();
     try {
       const newSubs = [...subs];
       newSubs[idx].done = !newSubs[idx].done;
       await update(ref(rdb, `goals/${goal.id}`), { subGoals: newSubs });
       refresh();
-    } catch (e) {
-      console.error("목표토글 에러:", e);
-    }
+    } catch (e) { console.error("목표토글 에러:", e); }
   };
 
   const addSub = async () => {
-    if (!currentUser) return onAuthRequired();
     if (!newSub) return;
     try {
       const newSubs = [...subs, { text: newSub, done: false }];
       await update(ref(rdb, `goals/${goal.id}`), { subGoals: newSubs });
       setNewSub(''); refresh();
-    } catch (e) {
-      console.error("세부목표추가 에러:", e);
-    }
+    } catch (e) { console.error("세부목표추가 에러:", e); }
   };
 
   return (
@@ -857,7 +611,7 @@ const GoalCard = ({ goal, isMe, refresh, rdb, currentUser, onDelete, onAuthRequi
         <div className="gmc-info">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
             <b>{goal.authorName}</b>: {goal.title}
-            {currentUser && (currentUser.role === 'admin' || goal.authorId === currentUser.uid) && (
+            {(currentUser.role === 'admin' || goal.authorId === currentUser.uid) && (
               <button className="del-btn-small" onClick={() => onDelete(`goals/${goal.id}`)}>삭제</button>
             )}
           </div>
@@ -872,6 +626,5 @@ const GoalCard = ({ goal, isMe, refresh, rdb, currentUser, onDelete, onAuthRequi
     </div>
   );
 };
-
 
 export default App;
